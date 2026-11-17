@@ -1,5 +1,4 @@
 import { setGlobalOptions } from "firebase-functions/v2";
-import { onDocumentCreated, onDocumentUpdated } from "firebase-functions/v2/firestore";
 import { onCall } from "firebase-functions/v2/https";
 import { onSchedule } from "firebase-functions/v2/scheduler";
 import { defineSecret } from "firebase-functions/params";
@@ -20,8 +19,7 @@ const APP_NAME = "即時投票系統";
 const SITE_URL = "https://cagoooo.github.io/vote";
 
 // Google Chat 減量設定
-// 1. 這些「成功」事件不即時推播：學生投票改成題目結束時送一張統計卡；
-//    建立題目已由 onQuestionCreated 推播，前端那則是重複的。
+// 1. 這些「成功」事件不即時推播：學生投票、建立題目都改由每日彙整（dailyVoteDigest）一次送出
 //    （舊版前端快取仍會呼叫，所以後端也要擋）
 const SILENT_SUCCESS_CONTEXTS = new Set(["student.vote", "teacher.createQuestion"]);
 // 2. 同一種事件（同狀態＋同位置＋同標題＋同題目）在這段時間內只推播一次，其餘合併計數
@@ -87,144 +85,120 @@ export const reportClientEvent = onCall(
     }
 );
 
-// 題目結束（active: true → false）時送一張投票統計卡，取代每票一則的通知
-// 涵蓋三種結束方式：老師手動結束、建立新題目時舊題自動關閉、排程到期
-export const onQuestionClosed = onDocumentUpdated(
+// 每日彙整：取代「每建一題、每結束一題就通知」，一天只送一張卡（Google Chat＋LINE）
+// 全國老師都在用時，逐題通知會洗版，所以全部集中到傍晚一次看
+const DIGEST_TOP_N = 5;
+const DIGEST_MAX_QUESTIONS = 200;
+
+export const dailyVoteDigest = onSchedule(
     {
-        document: "questions/{questionId}",
-        secrets: [GOOGLE_CHAT_WEBHOOK_URL],
+        schedule: "30 17 * * *",
+        timeZone: "Asia/Taipei",
+        secrets: [LINE_TOKEN, LINE_USER_ID, GOOGLE_CHAT_WEBHOOK_URL],
     },
-    async (event) => {
-        const before = event.data?.before.data();
-        const after = event.data?.after.data();
-        if (!before || !after) return;
-        if (!(before.active === true && after.active === false)) return;
+    async () => {
+        const db = getFirestore();
+        const since = Timestamp.fromMillis(Date.now() - 24 * 60 * 60 * 1000);
 
-        const questionId = event.params.questionId;
-        const roomCode: string = after.roomCode ?? "—";
-        const options: string[] = Array.isArray(after.options) ? after.options : [];
-        const questionType: string = after.questionType ?? "single";
+        const [qSnap, voteCountSnap] = await Promise.all([
+            db.collection("questions").where("createdAt", ">=", since).limit(DIGEST_MAX_QUESTIONS).get(),
+            db.collection("votes").where("timestamp", ">=", since).count().get(),
+        ]);
+        const newQuestions = qSnap.size;
+        const votesToday = voteCountSnap.data().count;
 
-        const votesSnap = await getFirestore().collection("votes").where("questionId", "==", questionId).get();
-        const total = votesSnap.size;
-        if (total === 0) {
-            logger.info("[onQuestionClosed] 0 票，不推播", { questionId, roomCode });
+        if (newQuestions === 0 && votesToday === 0) {
+            logger.info("[dailyVoteDigest] 今天沒有新題目也沒有投票，不推播");
             return;
         }
 
-        const counts: Record<number, number> = {};
-        let textCount = 0;
-        votesSnap.docs.forEach((v) => {
-            const d = v.data();
-            if (typeof d.optionIndex === "number") {
-                counts[d.optionIndex] = (counts[d.optionIndex] || 0) + 1;
-            } else if (Array.isArray(d.optionIndices)) {
-                d.optionIndices.forEach((idx: unknown) => {
-                    if (typeof idx === "number") counts[idx] = (counts[idx] || 0) + 1;
-                });
-            } else if (typeof d.textAnswer === "string") {
-                textCount += 1;
-            }
-        });
+        const teachers = new Set(qSnap.docs.map((d) => d.get("teacherId")).filter(Boolean)).size;
 
-        const ranking = Object.entries(counts)
-            .map(([k, v]) => ({ idx: Number(k), count: v }))
-            .sort((a, b) => b.count - a.count)
-            .slice(0, 5)
-            .map((r, i) => `${i + 1}. ${trimOpt(options[r.idx] ?? `選項 ${r.idx + 1}`)}（${r.count} 票）`);
+        // 每題票數（count 聚合，不用把票全部讀回來）
+        const perQuestion = await Promise.all(
+            qSnap.docs.map(async (d) => {
+                const c = await db.collection("votes").where("questionId", "==", d.id).count().get();
+                return { doc: d, votes: c.data().count };
+            })
+        );
+        const top = perQuestion
+            .filter((q) => q.votes > 0)
+            .sort((a, b) => b.votes - a.votes)
+            .slice(0, DIGEST_TOP_N);
+
+        const topLines = await Promise.all(
+            top.map(async ({ doc, votes }, i) => {
+                const data = doc.data();
+                const type: string = data.questionType ?? "single";
+                const options: string[] = Array.isArray(data.options) ? data.options : [];
+                let lead = "";
+                if (type !== "shortanswer") {
+                    const vs = await db.collection("votes").where("questionId", "==", doc.id).get();
+                    const counts: Record<number, number> = {};
+                    vs.docs.forEach((v) => {
+                        const x = v.data();
+                        const picks: unknown[] = typeof x.optionIndex === "number" ? [x.optionIndex] : Array.isArray(x.optionIndices) ? x.optionIndices : [];
+                        picks.forEach((idx) => {
+                            if (typeof idx === "number") counts[idx] = (counts[idx] || 0) + 1;
+                        });
+                    });
+                    const best = Object.entries(counts).sort((a, b) => b[1] - a[1])[0];
+                    if (best) lead = `｜最高：${trimOpt(options[Number(best[0])] ?? `選項 ${Number(best[0]) + 1}`)}`;
+                }
+                return `${i + 1}. 房間 ${data.roomCode ?? "—"}（${QUESTION_TYPE_LABEL[type] ?? type}）${votes} 票${lead}`;
+            })
+        );
 
         const rows = [
-            { label: "房間代碼", value: roomCode },
-            { label: "總票數", value: `${total} 票` },
-            { label: "題型", value: QUESTION_TYPE_LABEL[questionType] ?? questionType },
+            { label: "統計區間", value: "過去 24 小時" },
+            { label: "新題目", value: `${newQuestions} 題${newQuestions >= DIGEST_MAX_QUESTIONS ? "以上" : ""}` },
+            { label: "出題老師", value: `${teachers} 位` },
+            { label: "投票", value: `${votesToday} 票` },
         ];
-        if (textCount > 0) rows.push({ label: "簡答份數", value: `${textCount} 份` });
+        const body = topLines.length ? ["票數最多的題目：", ...topLines].join("\n") : "今天的新題目還沒有人投票";
 
         await pushGoogleChatCard(
             GOOGLE_CHAT_WEBHOOK_URL.value(),
             {
                 status: "success",
-                title: "投票結束統計",
+                title: "今日投票彙整",
                 subtitle: APP_NAME,
                 rows,
-                body: ranking.length ? ["票數排行：", ...ranking].join("\n") : undefined,
-                buttons: [{ text: "查看完整結果", url: `${SITE_URL}/${questionId}` }],
+                body,
+                buttons: [{ text: "開啟網站", url: SITE_URL }],
             },
-            "onQuestionClosed"
+            "dailyVoteDigest"
         );
-
-        logger.info("[onQuestionClosed] summary sent", { questionId, roomCode, total });
-    }
-);
-
-// 老師建立新題目時推播
-export const onQuestionCreated = onDocumentCreated(
-    {
-        document: "questions/{questionId}",
-        secrets: [LINE_TOKEN, LINE_USER_ID, GOOGLE_CHAT_WEBHOOK_URL],
-    },
-    async (event) => {
-        const data = event.data?.data();
-        if (!data) return;
-
-        const questionId = event.params.questionId;
-        const roomCode: string = data.roomCode ?? "—";
-        const options: string[] = Array.isArray(data.options) ? data.options : [];
-
-        // 兩欄式選項預覽：1. A   2. B
-        const optionLines: string[] = [];
-        for (let i = 0; i < Math.min(options.length, 6); i += 2) {
-            const left = `${i + 1}. ${trimOpt(options[i])}`;
-            const right = options[i + 1] ? `   ${i + 2}. ${trimOpt(options[i + 1])}` : "";
-            optionLines.push(left + right);
-        }
-        const optionPreview = optionLines.join("\n") + (options.length > 6 ? `\n…（共 ${options.length} 項）` : "");
 
         await notifyAdminCard(
             {
-                status: "started",
-                title: "新題目已開放投票",
+                status: "success",
+                title: "今日投票彙整",
                 appName: APP_NAME,
-                hero: { label: "🔑 房間代碼", value: roomCode },
+                hero: { label: "🗳️ 過去 24 小時", value: `${newQuestions} 題・${votesToday} 票` },
                 sections: [
-                    { type: "label-only", icon: "📝", text: `共 ${options.length} 個選項`, size: "xs" },
-                    { type: "text", icon: "", label: "", value: optionPreview },
+                    { type: "text", icon: "👩‍🏫", label: "出題老師", value: `${teachers} 位` },
+                    ...(topLines.length
+                        ? [{ type: "text" as const, icon: "🏆", label: "票數最多", value: topLines.slice(0, 3).join("\n") }]
+                        : []),
                 ],
-                action: { label: "📲 開啟投票頁", uri: `${SITE_URL}/${questionId}` },
-                footerNote: "學生可掃 QR 或輸入代碼",
+                action: { label: "📊 開啟網站", uri: SITE_URL },
+                footerNote: "每天 17:30 彙整一次",
             },
             LINE_TOKEN.value(),
             LINE_USER_ID.value()
         );
 
-        await pushGoogleChatCard(
-            GOOGLE_CHAT_WEBHOOK_URL.value(),
-            {
-                status: "success",
-                title: "新題目已開放投票",
-                subtitle: APP_NAME,
-                rows: [
-                    { label: "進度", value: "題目建立完成，學生可開始投票" },
-                    { label: "房間代碼", value: roomCode },
-                    { label: "選項數", value: `${options.length}` },
-                ],
-                body: optionPreview,
-                buttons: [{ text: "開啟投票頁", url: `${SITE_URL}/${questionId}` }],
-            },
-            "onQuestionCreated"
-        );
-
-        logger.info("[onQuestionCreated] notified", { questionId, roomCode });
+        logger.info("[dailyVoteDigest] sent", { newQuestions, votesToday, teachers });
     }
 );
 
-// 每 15 分鐘掃過期的活動題目，把 active 設 false 並推播
+// 每 15 分鐘掃過期的活動題目，把 active 設 false（不推播，統計交給每日彙整）
 // 順手清掉超過 5 分鐘的舊 reactions（前端只查 30 秒窗口，5 分前的留著沒用）
 export const expireOldQuestions = onSchedule(
     {
         schedule: "every 15 minutes",
         timeZone: "Asia/Taipei",
-        secrets: [LINE_TOKEN, LINE_USER_ID],
     },
     async () => {
         const db = getFirestore();
@@ -261,52 +235,10 @@ export const expireOldQuestions = onSchedule(
 
         logger.info(`[expireOldQuestions] 處理 ${snap.size} 題`);
 
-        for (const doc of snap.docs) {
-            const data = doc.data();
-            const roomCode: string = data.roomCode ?? "—";
-            const options: string[] = Array.isArray(data.options) ? data.options : [];
-
-            // 統計票數
-            const votesSnap = await db.collection("votes").where("questionId", "==", doc.id).get();
-            const total = votesSnap.size;
-            const counts: Record<number, number> = {};
-            votesSnap.docs.forEach((v) => {
-                const idx = v.data().optionIndex;
-                if (typeof idx === "number") counts[idx] = (counts[idx] || 0) + 1;
-            });
-
-            // 找出最高票
-            let topIdx = -1;
-            let topCount = 0;
-            Object.entries(counts).forEach(([k, v]) => {
-                if (v > topCount) {
-                    topCount = v;
-                    topIdx = Number(k);
-                }
-            });
-            const topLine =
-                topIdx >= 0 ? `${topIdx + 1}. ${trimOpt(options[topIdx] ?? "")}（${topCount} 票）` : "—";
-
-            // 設 active = false
-            await doc.ref.update({ active: false, expiredNotifiedAt: FieldValue.serverTimestamp() });
-
-            await notifyAdminCard(
-                {
-                    status: "warning",
-                    title: "題目已自動結束",
-                    appName: APP_NAME,
-                    hero: { label: "🔑 房間代碼", value: roomCode },
-                    sections: [
-                        { type: "text", icon: "👥", label: "總票數", value: `${total} 票` },
-                        { type: "text", icon: "🏆", label: "最高票", value: topLine },
-                    ],
-                    action: { label: "📊 查看完整結果", uri: `${SITE_URL}/${doc.id}` },
-                    footerNote: "可在「我的題目」重新啟用",
-                },
-                LINE_TOKEN.value(),
-                LINE_USER_ID.value()
-            );
-        }
+        // 只把題目關掉；結果統計改由每日彙整（dailyVoteDigest）一次送出
+        const batch = db.batch();
+        snap.docs.forEach((d) => batch.update(d.ref, { active: false, expiredNotifiedAt: FieldValue.serverTimestamp() }));
+        await batch.commit();
     }
 );
 
