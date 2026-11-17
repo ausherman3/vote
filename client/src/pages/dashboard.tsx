@@ -170,14 +170,14 @@ export default function Dashboard() {
         </Link>
         <div className="flex items-center gap-2">
           <img src={`${import.meta.env.BASE_URL}logo.png`} alt="" className="h-9 w-auto" />
-          <span className="hidden sm:inline text-sm font-extrabold text-slate-900">即時投票系統</span>
+          <span className="hidden sm:inline text-base font-extrabold text-slate-900">即時投票系統</span>
         </div>
       </header>
 
       {/* Library 開頭 */}
       <div className="mb-5">
         <div className="text-sm text-blue-700 font-extrabold mb-1">📚 我的題庫</div>
-        <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 leading-tight tracking-tight">
+        <h1 className="text-2xl sm:text-3xl lg:text-4xl font-extrabold text-slate-900 leading-tight tracking-tight">
           選一題再上一次，或建立新題目
         </h1>
         <div className="text-sm text-slate-500 mt-1">共 {questions.length} 題</div>

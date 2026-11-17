@@ -912,7 +912,7 @@ export default function Teacher() {
               <img
                 src={createdQuestion.imageUrl}
                 alt="問題圖片"
-                className="max-w-full max-h-[40vh] w-auto h-auto object-contain rounded-2xl"
+                className="max-w-full max-h-[40vh] lg:max-h-[55vh] w-auto h-auto object-contain rounded-2xl"
               />
             </div>
           </Card>
@@ -926,6 +926,8 @@ export default function Teacher() {
             )}
           </div>
 
+          {/* 電腦版：倒數計時（窄）與正確答案管理（寬）並排，避免整條全寬只放 3 顆按鈕 */}
+          <div className="grid xl:grid-cols-[minmax(0,1fr)_minmax(0,2fr)] gap-6 items-start">
           {/* 倒數計時控制 */}
           <Card className="p-4 sm:p-6 bg-gradient-to-r from-amber-50 to-orange-50 border-amber-200">
             <div className="flex items-center gap-3 mb-3">
@@ -1107,6 +1109,7 @@ export default function Teacher() {
               )}
             </div>
           </Card>
+          </div>
 
           {/* Additional Controls */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
