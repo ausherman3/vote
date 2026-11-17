@@ -4,6 +4,7 @@ import { Link, useLocation } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
 import { onAuthStateChanged, type User } from "firebase/auth";
 import { auth, signInWithGoogle } from "@/lib/firebase";
+import { INAPP_ERROR_CODE } from "@/lib/inapp-browser";
 import * as firestore from "@/lib/firestore-voting";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -104,6 +105,7 @@ export default function Dashboard() {
       });
     } catch (err: any) {
       if (err?.code === "auth/popup-closed-by-user" || err?.code === "auth/cancelled-popup-request") return;
+      if (err?.code === INAPP_ERROR_CODE) return; // 已顯示「改用瀏覽器開啟」引導
       reportServiceEvent({
         status: "failed",
         title: "Dashboard 登入失敗",

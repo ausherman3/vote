@@ -12,6 +12,7 @@ import {
 import { getFirestore } from "firebase/firestore";
 import { getFunctions } from "firebase/functions";
 import { getStorage } from "firebase/storage";
+import { guardInAppBrowserLogin } from "./inapp-browser";
 
 const firebaseConfig = {
     apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -47,6 +48,8 @@ export const loginAnonymously = async () => {
 // Google 登入：若目前是匿名使用者，優先用 linkWithPopup 升級（保留 uid 與舊題擁有權）；
 // 若 Google 帳號已被綁過其他 Firebase 帳號，fallback 用 signInWithCredential 切換過去（uid 會換）
 export const signInWithGoogle = async (): Promise<User> => {
+    // LINE／FB 等 App 內建瀏覽器會被 Google 擋下（403 disallowed_useragent），先引導改用瀏覽器
+    guardInAppBrowserLogin();
     const provider = new GoogleAuthProvider();
     const current = auth.currentUser;
 

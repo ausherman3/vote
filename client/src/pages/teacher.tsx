@@ -11,6 +11,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useVotingSound } from "@/hooks/use-voting-sounds";
 import * as firestore from "@/lib/firestore-voting";
 import { auth, signInWithGoogle, signOut } from "@/lib/firebase";
+import { INAPP_ERROR_CODE } from "@/lib/inapp-browser";
 import { onAuthStateChanged, type User } from "firebase/auth";
 import { Plus, Minus, Sparkles, RefreshCw, CheckCircle2, Eye, EyeOff, LogIn, LogOut, UserCircle, LayoutGrid, Download, Monitor, Timer, UserCheck, X as XIcon, CheckSquare, Circle, Pencil, GripVertical, ChevronLeft, ChevronRight, Wand2, Rocket, Star } from "lucide-react";
 import { EditQuestionDialog } from "@/components/edit-question-dialog";
@@ -98,6 +99,7 @@ export default function Teacher() {
     } catch (err: any) {
       if (err?.code === "auth/popup-closed-by-user") return;
       if (err?.code === "auth/cancelled-popup-request") return;
+      if (err?.code === INAPP_ERROR_CODE) return; // 已顯示「改用瀏覽器開啟」引導
       reportServiceEvent({
         status: "failed",
         title: "老師登入失敗",
@@ -173,10 +175,13 @@ export default function Teacher() {
     onSuccess: (question) => {
       setCreatedQuestion(question);
       playVoteSessionStart();
-      // 建立題目的通知由後端 onQuestionCreated 負責，前端不再重複送
+      // 建立題目不另外通知 Google Chat，由後端每日彙整（dailyVoteDigest）統計
+      const isAnon = !!auth.currentUser?.isAnonymous;
       toast({
         title: "成功建立問題",
-        description: "學生現在可以開始投票了",
+        description: isAnon
+          ? "學生現在可以開始投票了｜用 Google 登入，題目會存進題庫，換電腦也找得到"
+          : "學生現在可以開始投票了",
         variant: "success",
       });
     },
@@ -1131,6 +1136,24 @@ export default function Teacher() {
               <span className="text-sm sm:text-base">重新建立投票</span>
             </Button>
           </div>
+
+          {/* 沒登入的老師：提醒登入才能把題目存進題庫（放在頁面最下方，避免投影時太搶眼） */}
+          {currentUser?.isAnonymous && (
+            <div className="playful-card p-4 sm:p-5 flex items-center justify-between gap-3 flex-wrap border border-blue-100">
+              <div className="min-w-0 text-sm sm:text-base text-slate-700 leading-relaxed">
+                💾 這題目前只存在<b className="text-slate-900">這台電腦的瀏覽器</b>，換電腦或清除瀏覽紀錄就找不到了
+                <br className="hidden sm:block" />
+                用 Google 登入，題目會存進題庫，下次上課按「啟用」就能再用
+              </div>
+              <Button
+                type="button"
+                onClick={handleGoogleSignIn}
+                className="h-11 gap-1.5 rounded-full playful-cta px-5"
+              >
+                <LogIn className="w-4 h-4" />Google 登入
+              </Button>
+            </div>
+          )}
         </div>
       )}
 
