@@ -8,6 +8,7 @@ import {
     where,
     updateDoc,
     deleteDoc,
+    setDoc,
     onSnapshot,
     serverTimestamp,
     orderBy,
@@ -281,7 +282,7 @@ export const addVote = async (
     );
     const existingVotes = await getDocs(q);
     if (!existingVotes.empty) {
-        throw new Error("您已經投過票了");
+        throw voteError(VOTE_ALREADY_VOTED, "您已經投過票了");
     }
 
     const payload: Record<string, any> = {
@@ -303,8 +304,32 @@ export const addVote = async (
     if (identity?.name) payload.voterName = identity.name.trim().substring(0, 30);
     if (identity?.seat) payload.voterSeat = identity.seat.trim().substring(0, 10);
 
-    await addDoc(collection(db, "votes"), payload);
+    // 一人一票由資料庫把關：票的編號固定為「題目_學生」，同一人第二張票會被安全規則拒收；
+    // 題目關閉、過期或倒數結束後，規則也一律拒收
+    const voteRef = doc(db, "votes", voteDocId(questionId, userId));
+    try {
+        await setDoc(voteRef, payload);
+    } catch (err: any) {
+        if (err?.code === "permission-denied") {
+            const existing = await getDoc(voteRef).catch(() => null);
+            if (existing?.exists()) throw voteError(VOTE_ALREADY_VOTED, "您已經投過票了");
+            throw voteError(VOTE_CLOSED, "投票已經結束，無法再投票");
+        }
+        throw err;
+    }
 };
+
+/** 票的固定編號：同一位學生在同一題只會有一張票 */
+export const voteDocId = (questionId: string, userId: string) => `${questionId}_${userId}`;
+
+export const VOTE_ALREADY_VOTED = "vote/already-voted";
+export const VOTE_CLOSED = "vote/closed";
+
+const voteError = (code: string, message: string) => Object.assign(new Error(message), { code });
+
+/** 預期中的拒絕（已投過、已結束），不用回報成系統錯誤 */
+export const isExpectedVoteRejection = (err: any) =>
+    err?.code === VOTE_ALREADY_VOTED || err?.code === VOTE_CLOSED;
 
 // 訂閱某題的簡答題答案（即時，給老師端 word cloud 用）
 export const listenToTextAnswers = (

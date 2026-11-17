@@ -205,6 +205,16 @@ export default function Student() {
       }
     },
     onError: (error: any) => {
+      // 已投過、已結束是正常的拒收，直接告訴學生，不算系統錯誤
+      if (firestore.isExpectedVoteRejection(error)) {
+        if (error.code === firestore.VOTE_ALREADY_VOTED) setHasVoted(true);
+        toast({
+          title: error.code === firestore.VOTE_ALREADY_VOTED ? "已經投過票囉" : "投票已結束",
+          description: error.message,
+          variant: "destructive",
+        });
+        return;
+      }
       reportServiceEvent({
         status: "failed",
         title: "學生投票失敗",

@@ -28,9 +28,17 @@ service cloud.firestore {
 
       // create 必填 questionId / userId / timestamp，且需含以下三者之一：
       //   optionIndex (int) 單選 / optionIndices (list 1-20) 多選 / textAnswer (string 1-50) 簡答
+      // 一人一票：票的編號必須是「題目_本人」，同一人第二張票會撞編號（變成 update）而被拒收。
+      // 過渡期（舊版網頁還在學生平板快取裡）暫時接受隨機編號，2026-12-01 起自動停止；
+      // 隨機編號限 20 碼英數字（Firestore 自動編號格式），避免有人搶先用別人的「題目_學生」編號卡位。
+      // 不論哪種編號，題目都必須還開著：active、未過期、倒數未結束（給 5 秒網路延遲寬限）。
       allow create: if request.auth != null
                     && request.resource.data.userId == request.auth.uid
                     && request.resource.data.keys().hasAll(['questionId', 'userId', 'timestamp'])
+                    && (voteId == request.resource.data.questionId + '_' + request.auth.uid
+                        || (request.time < timestamp.date(2026, 12, 1)
+                            && voteId.matches('[A-Za-z0-9]{20}')))
+                    && questionOpenForVoting(request.resource.data.questionId)
                     && (
                          ('optionIndex' in request.resource.data && request.resource.data.optionIndex is int)
                          ||
@@ -64,6 +72,16 @@ service cloud.firestore {
 
       allow update: if false;
       allow delete: if false;
+    }
+
+    function questionOpenForVoting(questionId) {
+      let qPath = /databases/$(database)/documents/questions/$(questionId);
+      let q = get(qPath).data;
+      return exists(qPath)
+        && q.active == true
+        && (q.get('expiresAt', null) == null || request.time < q.expiresAt)
+        && (q.get('votingEndsAt', null) == null
+            || request.time < q.votingEndsAt + duration.value(5, 's'));
     }
 
     // 其他 collection 一律拒絕
