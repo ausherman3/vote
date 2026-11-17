@@ -177,18 +177,7 @@ export default function Student() {
       // 🎉 慶祝動畫：confetti + 大字 overlay + 音效（多重感官回饋，學齡層越小越愛）
       triggerConfetti();
       try { playVoteSubmitted(); } catch { /* ignore audio block */ }
-      reportServiceEvent({
-        status: "success",
-        title: "學生投票成功",
-        context: "student.vote",
-        progress: "投票資料已寫入 Firestore",
-        details: {
-          questionId: question?.id,
-          questionType: question?.questionType ?? "single",
-          requireIdentity,
-          selectionType: Array.isArray(selection) ? "multiple" : typeof selection === "object" ? "text" : "single",
-        },
-      });
+      // 投票成功不再逐票通知 Google Chat，改由後端 onQuestionClosed 在題目結束時送統計卡
       setShowSuccessOverlay(true);
       window.setTimeout(() => setShowSuccessOverlay(false), 1800);
 

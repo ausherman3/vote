@@ -173,19 +173,7 @@ export default function Teacher() {
     onSuccess: (question) => {
       setCreatedQuestion(question);
       playVoteSessionStart();
-      reportServiceEvent({
-        status: "success",
-        title: "題目建立成功",
-        context: "teacher.createQuestion",
-        progress: "題目已建立並開放使用",
-        details: {
-          questionId: question.id,
-          roomCode: question.roomCode,
-          questionType: question.questionType,
-          requireIdentity: question.requireIdentity,
-          optionCount: question.options.length,
-        },
-      });
+      // 建立題目的通知由後端 onQuestionCreated 負責，前端不再重複送
       toast({
         title: "成功建立問題",
         description: "學生現在可以開始投票了",

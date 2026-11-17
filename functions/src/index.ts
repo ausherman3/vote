@@ -1,5 +1,5 @@
 import { setGlobalOptions } from "firebase-functions/v2";
-import { onDocumentCreated } from "firebase-functions/v2/firestore";
+import { onDocumentCreated, onDocumentUpdated } from "firebase-functions/v2/firestore";
 import { onCall } from "firebase-functions/v2/https";
 import { onSchedule } from "firebase-functions/v2/scheduler";
 import { defineSecret } from "firebase-functions/params";
@@ -19,6 +19,15 @@ const GOOGLE_CHAT_WEBHOOK_URL = defineSecret("GOOGLE_CHAT_WEBHOOK_URL");
 const APP_NAME = "即時投票系統";
 const SITE_URL = "https://cagoooo.github.io/vote";
 
+// Google Chat 減量設定
+// 1. 這些「成功」事件不即時推播：學生投票改成題目結束時送一張統計卡；
+//    建立題目已由 onQuestionCreated 推播，前端那則是重複的。
+//    （舊版前端快取仍會呼叫，所以後端也要擋）
+const SILENT_SUCCESS_CONTEXTS = new Set(["student.vote", "teacher.createQuestion"]);
+// 2. 同一種事件（同狀態＋同位置＋同標題＋同題目）在這段時間內只推播一次，其餘合併計數
+const THROTTLE_WINDOW_MS = 10 * 60 * 1000;
+const THROTTLE_COLLECTION = "_notifyThrottle";
+
 export const reportClientEvent = onCall(
     {
         secrets: [GOOGLE_CHAT_WEBHOOK_URL],
@@ -34,6 +43,16 @@ export const reportClientEvent = onCall(
         const details = data.details && typeof data.details === "object" ? data.details : {};
         const auth = request.auth;
 
+        if (status === "success" && SILENT_SUCCESS_CONTEXTS.has(context)) {
+            return { ok: true, notified: false, reason: "silent" };
+        }
+
+        const throttleKey = [status, context, title, cleanText(String(details.questionId ?? ""), "", 60)].join("|");
+        const throttle = await claimNotifySlot(throttleKey);
+        if (!throttle.send) {
+            return { ok: true, notified: false, reason: "throttled" };
+        }
+
         const rows = [
             { label: "進度", value: progress || (status === "success" ? "流程已完成" : "等待處理") },
             { label: "位置", value: context },
@@ -43,6 +62,13 @@ export const reportClientEvent = onCall(
         Object.entries(details)
             .slice(0, 6)
             .forEach(([key, value]) => rows.push({ label: key, value: cleanText(String(value ?? ""), "-", 200) }));
+
+        if (throttle.mergedCount > 0) {
+            rows.push({
+                label: "合併通知",
+                value: `上次通知後又發生 ${throttle.mergedCount} 次相同事件（${THROTTLE_WINDOW_MS / 60000} 分鐘內只通知一次）`,
+            });
+        }
 
         await pushGoogleChatCard(
             GOOGLE_CHAT_WEBHOOK_URL.value(),
@@ -57,7 +83,77 @@ export const reportClientEvent = onCall(
             "reportClientEvent"
         );
 
-        return { ok: true };
+        return { ok: true, notified: true };
+    }
+);
+
+// 題目結束（active: true → false）時送一張投票統計卡，取代每票一則的通知
+// 涵蓋三種結束方式：老師手動結束、建立新題目時舊題自動關閉、排程到期
+export const onQuestionClosed = onDocumentUpdated(
+    {
+        document: "questions/{questionId}",
+        secrets: [GOOGLE_CHAT_WEBHOOK_URL],
+    },
+    async (event) => {
+        const before = event.data?.before.data();
+        const after = event.data?.after.data();
+        if (!before || !after) return;
+        if (!(before.active === true && after.active === false)) return;
+
+        const questionId = event.params.questionId;
+        const roomCode: string = after.roomCode ?? "—";
+        const options: string[] = Array.isArray(after.options) ? after.options : [];
+        const questionType: string = after.questionType ?? "single";
+
+        const votesSnap = await getFirestore().collection("votes").where("questionId", "==", questionId).get();
+        const total = votesSnap.size;
+        if (total === 0) {
+            logger.info("[onQuestionClosed] 0 票，不推播", { questionId, roomCode });
+            return;
+        }
+
+        const counts: Record<number, number> = {};
+        let textCount = 0;
+        votesSnap.docs.forEach((v) => {
+            const d = v.data();
+            if (typeof d.optionIndex === "number") {
+                counts[d.optionIndex] = (counts[d.optionIndex] || 0) + 1;
+            } else if (Array.isArray(d.optionIndices)) {
+                d.optionIndices.forEach((idx: unknown) => {
+                    if (typeof idx === "number") counts[idx] = (counts[idx] || 0) + 1;
+                });
+            } else if (typeof d.textAnswer === "string") {
+                textCount += 1;
+            }
+        });
+
+        const ranking = Object.entries(counts)
+            .map(([k, v]) => ({ idx: Number(k), count: v }))
+            .sort((a, b) => b.count - a.count)
+            .slice(0, 5)
+            .map((r, i) => `${i + 1}. ${trimOpt(options[r.idx] ?? `選項 ${r.idx + 1}`)}（${r.count} 票）`);
+
+        const rows = [
+            { label: "房間代碼", value: roomCode },
+            { label: "總票數", value: `${total} 票` },
+            { label: "題型", value: QUESTION_TYPE_LABEL[questionType] ?? questionType },
+        ];
+        if (textCount > 0) rows.push({ label: "簡答份數", value: `${textCount} 份` });
+
+        await pushGoogleChatCard(
+            GOOGLE_CHAT_WEBHOOK_URL.value(),
+            {
+                status: "success",
+                title: "投票結束統計",
+                subtitle: APP_NAME,
+                rows,
+                body: ranking.length ? ["票數排行：", ...ranking].join("\n") : undefined,
+                buttons: [{ text: "查看完整結果", url: `${SITE_URL}/${questionId}` }],
+            },
+            "onQuestionClosed"
+        );
+
+        logger.info("[onQuestionClosed] summary sent", { questionId, roomCode, total });
     }
 );
 
@@ -213,6 +309,43 @@ export const expireOldQuestions = onSchedule(
         }
     }
 );
+
+const QUESTION_TYPE_LABEL: Record<string, string> = {
+    single: "單選",
+    multiple: "多選",
+    truefalse: "是非",
+    shortanswer: "簡答",
+};
+
+// 節流：同一個 key 在 THROTTLE_WINDOW_MS 內只放行一次，其餘累計到 suppressed
+async function claimNotifySlot(key: string): Promise<{ send: boolean; mergedCount: number }> {
+    const db = getFirestore();
+    const docId = Buffer.from(key).toString("base64url").slice(0, 400);
+    const ref = db.collection(THROTTLE_COLLECTION).doc(docId);
+    try {
+        return await db.runTransaction(async (tx) => {
+            const snap = await tx.get(ref);
+            const nowMs = Date.now();
+            const lastSentMs = snap.exists ? (snap.get("lastSentAt") as Timestamp | undefined)?.toMillis() ?? 0 : 0;
+            const suppressed = snap.exists ? Number(snap.get("suppressed") ?? 0) : 0;
+            if (nowMs - lastSentMs < THROTTLE_WINDOW_MS) {
+                tx.set(ref, { key, suppressed: suppressed + 1 }, { merge: true });
+                return { send: false, mergedCount: 0 };
+            }
+            tx.set(ref, {
+                key,
+                lastSentAt: Timestamp.fromMillis(nowMs),
+                suppressed: 0,
+                expireAt: Timestamp.fromMillis(nowMs + 24 * 60 * 60 * 1000),
+            });
+            return { send: true, mergedCount: suppressed };
+        });
+    } catch (err: any) {
+        // 節流失敗時寧可照常通知，不要漏掉錯誤
+        logger.warn("[claimNotifySlot] throttle failed, sending anyway", { message: err?.message });
+        return { send: true, mergedCount: 0 };
+    }
+}
 
 function trimOpt(s: string): string {
     if (!s) return "";

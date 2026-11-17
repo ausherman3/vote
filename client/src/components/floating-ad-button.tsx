@@ -5,8 +5,27 @@ import { X, Sparkles } from "lucide-react";
 // 全域防重複點擊標記
 let isGlobalClicking = false;
 
+// 使用者按過 ✕ 後記在這台裝置（localStorage），之後就不再顯示
+const DISMISS_KEY = "vote.floatingAdDismissed.v1";
+
+function readDismissed(): boolean {
+  try {
+    return window.localStorage.getItem(DISMISS_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function saveDismissed(): void {
+  try {
+    window.localStorage.setItem(DISMISS_KEY, "1");
+  } catch {
+    /* 無痕模式或儲存被封鎖時，只在本次瀏覽隱藏 */
+  }
+}
+
 export function FloatingAdButton() {
-  const [isVisible, setIsVisible] = useState(true);
+  const [isVisible, setIsVisible] = useState(() => !readDismissed());
   const [isHovered, setIsHovered] = useState(false);
   const lastClickTime = useRef(0);
 
@@ -48,6 +67,7 @@ export function FloatingAdButton() {
   const handleClose = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
+    saveDismissed();
     setIsVisible(false);
   };
 
