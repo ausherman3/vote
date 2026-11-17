@@ -1,7 +1,7 @@
 import { useLocation } from "wouter";
 
 const SCHOOL_PAGE_URL =
-    "https://www.smes.tyc.edu.tw/modules/school/index.php?department_id=2&zone_id=0&page_id=2&content_id=11&type=news&from_op=all_news#a5";
+    "https://cagoooo.github.io/Akai/";
 
 /**
  * 共用頁尾署名（阿凱老師）。
