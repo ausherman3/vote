@@ -53,7 +53,7 @@ export default function Join() {
               <KeyRound className="w-8 h-8 text-blue-600" />
             </div>
             <div>
-              <div className="text-[13px] text-blue-700 font-extrabold mb-1">🔑 輸入房間代碼</div>
+              <div className="text-sm text-blue-700 font-extrabold mb-1">🔑 輸入房間代碼</div>
               <h1 className="text-2xl font-extrabold text-slate-900 leading-tight tracking-tight">加入老師的投票</h1>
               <p className="text-sm text-slate-500 mt-2 leading-relaxed">
                 老師會給你 4 碼代碼（例如 K3X7），輸入後即可進入投票

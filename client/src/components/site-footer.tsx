@@ -13,7 +13,7 @@ export function SiteFooter() {
 
     return (
         <footer className="site-credit no-print w-full">
-            <div className="max-w-4xl mx-auto px-4 pt-3 pb-4 text-center text-xs text-slate-400 border-t border-slate-200/60 mt-2">
+            <div className="max-w-[min(1320px,94vw)] mx-auto px-4 pt-3 pb-4 text-center text-sm text-slate-400 border-t border-slate-200/60 mt-2">
                 Made with{" "}
                 <span aria-label="愛心" className="site-credit__heart">
                     ❤️

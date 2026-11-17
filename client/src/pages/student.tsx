@@ -402,9 +402,9 @@ export default function Student() {
           <img src={`${import.meta.env.BASE_URL}logo.png`} alt="" className="w-8 h-8 sm:w-9 sm:h-9 rounded-md" />
           <div className="flex-1 leading-tight">
             <div className="text-sm sm:text-base font-extrabold text-slate-900">即時投票系統</div>
-            <div className="text-[11px] text-slate-500">{committedName ? `${committedName} 同學` : "歡迎你！"}</div>
+            <div className="text-xs text-slate-500">{committedName ? `${committedName} 同學` : "歡迎你！"}</div>
           </div>
-          <span className="inline-flex items-center gap-1 text-[11px] px-2 py-1 bg-red-100 text-red-600 rounded-full font-extrabold">
+          <span className="inline-flex items-center gap-1 text-xs px-2 py-1 bg-red-100 text-red-600 rounded-full font-extrabold">
             <span className="w-1.5 h-1.5 rounded-full bg-red-600 animate-playful-pulse" />LIVE
           </span>
         </div>
@@ -553,7 +553,7 @@ export default function Student() {
                     className="rounded-2xl p-4 mb-2"
                     style={{ background: "linear-gradient(135deg,#EFF6FF,#FCE7F3)" }}
                   >
-                    <div className="text-[11px] text-blue-700 font-extrabold mb-1">
+                    <div className="text-xs text-blue-700 font-extrabold mb-1">
                       👋 {committedName ? `嗨，${committedName}` : "請選一個答案"}
                     </div>
                     <h2 className="text-lg sm:text-xl font-extrabold text-slate-900 leading-snug">
@@ -692,7 +692,7 @@ export default function Student() {
                           >
                             {String.fromCharCode(65 + index)}
                           </span>
-                          <span className="flex-1 text-base sm:text-[15px] font-extrabold text-slate-900 break-words leading-snug">
+                          <span className="flex-1 text-base sm:text-[0.95rem] font-extrabold text-slate-900 break-words leading-snug">
                             {option}
                           </span>
                           {isAnswered ? (

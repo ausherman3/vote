@@ -125,7 +125,7 @@ export function EditQuestionDialog({ question, open, onOpenChange, onSaved }: Pr
                     </DialogTitle>
                     <DialogDescription className="text-xs text-slate-500 pl-10">
                         房間代碼{" "}
-                        <span className="inline-block px-1.5 py-0.5 rounded font-mono font-bold text-blue-700 bg-blue-100/70 text-[11px] tracking-wider">
+                        <span className="inline-block px-1.5 py-0.5 rounded font-mono font-bold text-blue-700 bg-blue-100/70 text-xs tracking-wider">
                             {question.roomCode}
                         </span>{" "}
                         · 修改後立即生效，已投的票不會重算
@@ -176,7 +176,7 @@ export function EditQuestionDialog({ question, open, onOpenChange, onSaved }: Pr
                                             <><RefreshCw className="w-3.5 h-3.5" />{imageUrl ? "換圖" : "上傳"}</>
                                         )}
                                     </Button>
-                                    <span className="text-[11px] text-slate-400 leading-snug">
+                                    <span className="text-xs text-slate-400 leading-snug">
                                         建議 16:9
                                         <br />已上傳會自動壓縮
                                     </span>
@@ -201,7 +201,7 @@ export function EditQuestionDialog({ question, open, onOpenChange, onSaved }: Pr
                                 <Circle className={`w-5 h-5 flex-shrink-0 ${questionType === "single" ? "text-blue-600" : "text-slate-400"}`} />
                                 <div className="min-w-0">
                                     <div className={`text-sm font-medium ${questionType === "single" ? "text-blue-900" : "text-slate-700"}`}>單選</div>
-                                    <div className="text-[11px] text-slate-500 leading-tight">只能選 1 個</div>
+                                    <div className="text-xs text-slate-500 leading-tight">只能選 1 個</div>
                                 </div>
                             </button>
                             <button
@@ -216,7 +216,7 @@ export function EditQuestionDialog({ question, open, onOpenChange, onSaved }: Pr
                                 <CheckSquare className={`w-5 h-5 flex-shrink-0 ${questionType === "multiple" ? "text-blue-600" : "text-slate-400"}`} />
                                 <div className="min-w-0">
                                     <div className={`text-sm font-medium ${questionType === "multiple" ? "text-blue-900" : "text-slate-700"}`}>多選</div>
-                                    <div className="text-[11px] text-slate-500 leading-tight">可複選多個</div>
+                                    <div className="text-xs text-slate-500 leading-tight">可複選多個</div>
                                 </div>
                             </button>
                         </div>
@@ -226,7 +226,7 @@ export function EditQuestionDialog({ question, open, onOpenChange, onSaved }: Pr
                     <section>
                         <div className="flex items-baseline justify-between mb-2">
                             <div className="text-sm font-semibold text-slate-700">選項</div>
-                            <div className="text-[11px] text-slate-400">{validOptionCount} 個有效 · 至少 2 個</div>
+                            <div className="text-xs text-slate-400">{validOptionCount} 個有效 · 至少 2 個</div>
                         </div>
                         <div className="space-y-1.5">
                             {options.map((opt, i) => (
@@ -287,7 +287,7 @@ export function EditQuestionDialog({ question, open, onOpenChange, onSaved }: Pr
                             <UserCheck className={`w-4 h-4 ${requireIdentity ? "text-blue-600" : "text-slate-400"}`} />
                             <div className="flex-1 min-w-0">
                                 <div className={`text-sm font-medium ${requireIdentity ? "text-blue-900" : "text-slate-700"}`}>需要學生具名才能投票</div>
-                                <div className="text-[11px] text-slate-500 leading-tight">
+                                <div className="text-xs text-slate-500 leading-tight">
                                     {requireIdentity ? "學生需先輸入姓名/座號" : "匿名投票，學生不需登入"}
                                 </div>
                             </div>

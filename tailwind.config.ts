@@ -11,6 +11,10 @@ export default {
       fontFamily: {
         sans: ['Nunito', '-apple-system', 'PingFang TC', 'Helvetica Neue', 'sans-serif'],
       },
+      // 最小字 text-xs 由 12px 提高到 13px（電腦 18px 根字級時約 14.6px），避免小字看不清楚
+      fontSize: {
+        xs: ["0.8125rem", { lineHeight: "1.15rem" }],
+      },
       borderRadius: {
         lg: "var(--radius)",
         md: "calc(var(--radius) - 2px)",

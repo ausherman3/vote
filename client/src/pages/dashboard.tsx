@@ -160,7 +160,7 @@ export default function Dashboard() {
 
   return (
     <div className="playful-shell">
-      <div className="page-container max-w-5xl">
+      <div className="page-container max-w-[min(1320px,94vw)]">
       {/* Playful 玻璃感頂列 */}
       <header className="playful-topbar -mx-6 px-4 sm:px-6 py-3 mb-6 flex items-center justify-between gap-3 rounded-none">
         <Link href="/">
@@ -176,7 +176,7 @@ export default function Dashboard() {
 
       {/* Library 開頭 */}
       <div className="mb-5">
-        <div className="text-[13px] text-blue-700 font-extrabold mb-1">📚 我的題庫</div>
+        <div className="text-sm text-blue-700 font-extrabold mb-1">📚 我的題庫</div>
         <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 leading-tight tracking-tight">
           選一題再上一次，或建立新題目
         </h1>

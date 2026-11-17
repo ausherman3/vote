@@ -160,7 +160,7 @@ export function VersionBadge() {
     const version = typeof __APP_VERSION__ !== "undefined" ? __APP_VERSION__ : "dev";
     return (
         <div
-            className="fixed bottom-2 left-2 z-[100] text-[10px] text-gray-400 hover:text-gray-600 font-mono select-none pointer-events-none"
+            className="fixed bottom-2 left-2 z-[100] text-xs text-gray-400 hover:text-gray-600 font-mono select-none pointer-events-none"
             title={`版本：${version}`}
         >
             v{version}

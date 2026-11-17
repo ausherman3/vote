@@ -30,7 +30,7 @@ export function QRDisplay({ questionId, roomCode }: QRDisplayProps) {
 
   return (
     <Card className="p-5 sm:p-6 rounded-3xl border-0 shadow-[0_4px_20px_rgba(15,23,42,0.04)]">
-      <div className="text-[11px] font-bold text-slate-500 uppercase tracking-widest mb-3 flex items-center gap-1.5">
+      <div className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-3 flex items-center gap-1.5">
         <Scan className="w-3.5 h-3.5" />學生掃描加入
       </div>
       <div className="bg-slate-50 rounded-2xl p-3 grid place-items-center">
@@ -39,7 +39,7 @@ export function QRDisplay({ questionId, roomCode }: QRDisplayProps) {
 
       {roomCode && (
         <div className="mt-3.5 rounded-2xl p-3 text-center" style={{ background: "linear-gradient(135deg,#EFF6FF,#FCE7F3)" }}>
-          <div className="text-[11px] text-slate-500 mb-1 flex items-center justify-center gap-1">
+          <div className="text-xs text-slate-500 mb-1 flex items-center justify-center gap-1">
             <KeyRound className="w-3 h-3" />或前往{" "}
             <a href={joinUrl} target="_blank" rel="noopener noreferrer" className="text-blue-700 underline underline-offset-2 decoration-blue-400 hover:decoration-blue-700">
               vote ＋ 房間代碼
@@ -63,7 +63,7 @@ export function QRDisplay({ questionId, roomCode }: QRDisplayProps) {
         </div>
       )}
 
-      <p className="mt-3 text-[11px] text-center text-slate-500">
+      <p className="mt-3 text-xs text-center text-slate-500">
         💡 學生掃 QR Code 後，他們的投票會即時顯示在右邊
       </p>
     </Card>

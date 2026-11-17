@@ -13,6 +13,11 @@
     color-scheme: light only;
   }
 
+  /* 根字級隨螢幕放大：Tailwind 的字級與間距都用 rem，一行就讓全站在電腦上放大 */
+  html { font-size: 16px; }
+  @media (min-width: 768px) { html { font-size: 17px; } }
+  @media (min-width: 1200px) { html { font-size: 18px; } }
+
   body {
     @apply antialiased min-h-screen text-slate-900;
     background: linear-gradient(180deg, #FEF9E7 0%, #EFF6FF 100%);

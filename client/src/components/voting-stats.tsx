@@ -95,11 +95,11 @@ export function VotingStats({ question, onVoteReceived }: VotingStatsProps) {
                   >
                     {String.fromCharCode(65 + index)}
                   </span>
-                  <span className="flex-1 text-sm sm:text-[15px] font-bold text-slate-900 break-words leading-snug">
+                  <span className="flex-1 text-sm sm:text-[0.95rem] font-bold text-slate-900 break-words leading-snug">
                     {option}
                   </span>
                   {isCorrect && (
-                    <span className="text-[11px] px-2 py-0.5 bg-emerald-500 text-white rounded-full font-extrabold flex items-center gap-0.5 flex-shrink-0">
+                    <span className="text-xs px-2 py-0.5 bg-emerald-500 text-white rounded-full font-extrabold flex items-center gap-0.5 flex-shrink-0">
                       <CheckCircle2 className="w-3 h-3" />正解
                     </span>
                   )}

@@ -366,7 +366,7 @@ export default function Teacher() {
 
   return (
     <div className="playful-shell">
-      <div className="page-container max-w-4xl">
+      <div className="page-container max-w-[min(1320px,94vw)]">
       {/* Playful 玻璃感頂列：logo + 品牌 + 連續打卡 chip */}
       <header className="playful-topbar -mx-6 px-4 sm:px-6 py-3 mb-6 flex items-center justify-between gap-3 rounded-none">
         <a href="https://www.smes.tyc.edu.tw/" target="_blank" rel="noopener noreferrer"
@@ -378,7 +378,7 @@ export default function Teacher() {
           />
           <div className="leading-tight">
             <div className="text-base sm:text-lg font-extrabold text-slate-900">即時投票系統</div>
-            <div className="text-[11px] text-slate-500 hidden sm:block">讓每個聲音都被聽見 ✨</div>
+            <div className="text-xs text-slate-500 hidden sm:block">讓每個聲音都被聽見 ✨</div>
           </div>
         </a>
 
@@ -430,7 +430,7 @@ export default function Teacher() {
             </motion.div>
           ) : (
             <>
-              <span className="hidden md:inline text-[11px] text-amber-700 bg-amber-50 border border-amber-200 px-2 py-1 rounded-full font-bold">
+              <span className="hidden md:inline text-xs text-amber-700 bg-amber-50 border border-amber-200 px-2 py-1 rounded-full font-bold">
                 匿名模式
               </span>
               <Button
@@ -452,8 +452,8 @@ export default function Teacher() {
           {/* Playful Hero 問候卡 */}
           <div className="playful-card p-6 sm:p-8 flex items-center justify-between gap-4 overflow-hidden">
             <div className="min-w-0">
-              <div className="text-[13px] text-blue-700 font-extrabold mb-2">👋 嗨，老師！</div>
-              <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 leading-tight tracking-tight">
+              <div className="text-sm text-blue-700 font-extrabold mb-2">👋 嗨，老師！</div>
+              <h1 className="text-2xl sm:text-3xl lg:text-4xl font-extrabold text-slate-900 leading-tight tracking-tight">
                 今天想問學生<br className="hidden sm:block" />什麼問題呢？
               </h1>
               <div className="flex gap-2 mt-4 flex-wrap">
@@ -463,10 +463,10 @@ export default function Teacher() {
               </div>
             </div>
             {/* 裝飾圖形：黃方塊 + 藍方塊 + 粉紅圓 */}
-            <div className="relative w-24 h-24 sm:w-28 sm:h-28 flex-shrink-0 hidden sm:block" aria-hidden>
-              <div className="absolute top-0 left-0 w-12 h-12 rounded-2xl bg-amber-400" />
-              <div className="absolute bottom-0 right-0 w-12 h-12 rounded-2xl bg-blue-500" />
-              <div className="absolute top-5 right-5 w-12 h-12 rounded-full bg-pink-400" />
+            <div className="relative w-24 h-24 sm:w-28 sm:h-28 lg:w-36 lg:h-36 flex-shrink-0 hidden sm:block" aria-hidden>
+              <div className="absolute top-0 left-0 w-12 h-12 lg:w-16 lg:h-16 rounded-2xl bg-amber-400" />
+              <div className="absolute bottom-0 right-0 w-12 h-12 lg:w-16 lg:h-16 rounded-2xl bg-blue-500" />
+              <div className="absolute top-5 right-5 lg:top-7 lg:right-7 w-12 h-12 lg:w-16 lg:h-16 rounded-full bg-pink-400" />
             </div>
           </div>
 
@@ -624,7 +624,7 @@ export default function Teacher() {
                 )}
               </h2>
               {(questionType === "single" || questionType === "multiple") && options.length >= 3 && (
-                <span className="text-[11px] text-slate-500 flex items-center gap-1">
+                <span className="text-xs text-slate-500 flex items-center gap-1">
                   <GripVertical className="w-3 h-3" />可拖曳排序
                 </span>
               )}
@@ -862,11 +862,11 @@ export default function Teacher() {
         <div className="space-y-6 animate-fade-in">
           <div className="flex items-end justify-between mb-4 gap-3 flex-wrap">
             <div>
-              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-red-100 text-red-600 text-[11px] font-extrabold mb-2">
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-red-100 text-red-600 text-xs font-extrabold mb-2">
                 <span className="w-1.5 h-1.5 rounded-full bg-red-600 animate-playful-pulse" />
                 投票進行中
               </span>
-              <h2 className="text-2xl sm:text-3xl font-extrabold text-slate-900 leading-tight">即時計票中</h2>
+              <h2 className="text-2xl sm:text-3xl lg:text-4xl font-extrabold text-slate-900 leading-tight">即時計票中</h2>
             </div>
             <div className="flex items-center gap-2 flex-wrap">
               <Button
@@ -1178,7 +1178,7 @@ function PlayfulTypeRow({
           >
             <div className="text-3xl mb-1.5">{t.emoji}</div>
             <div className="font-extrabold text-sm" style={{ color: on ? t.color : "#0F172A" }}>{t.label}</div>
-            <div className="text-[11px] text-slate-400 mt-0.5">{t.hint}</div>
+            <div className="text-xs text-slate-400 mt-0.5">{t.hint}</div>
           </button>
         );
       })}
