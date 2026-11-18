@@ -796,4 +796,471 @@ export default function Teacher() {
                       </ol>
                     </div>
                   ) : (
-                    <div className="text-slate-600 text-xs">{questionType ===
+                    <div className="text-slate-600 text-xs">{questionType === "truefalse" ? "選項自動鎖定 ⭕ 是 / ❌ 否" : `學生可輸入最多 ${firestore.SHORTANSWER_MAX_LENGTH} 字`}</div>
+                  )}
+                </div>
+              </div>
+            </Card>
+          )}
+
+          {/* wizard 模式的 Prev/Next + 建立按鈕 */}
+          {formMode === "wizard" ? (
+            <div className="flex items-center gap-2">
+              {wizardStep > 1 ? (
+                <Button type="button" variant="outline" onClick={() => setWizardStep((wizardStep - 1) as 1 | 2 | 3)} className="gap-1">
+                  <ChevronLeft className="w-4 h-4" />上一步
+                </Button>
+              ) : <div className="flex-1" />}
+              <div className="flex-1" />
+              {wizardStep < 3 ? (
+                <Button
+                  type="button"
+                  onClick={() => setWizardStep((wizardStep + 1) as 1 | 2 | 3)}
+                  disabled={
+                    (wizardStep === 1 && !imageUrl) ||
+                    (wizardStep === 2 && optionsRequired && validOptionCount < 2)
+                  }
+                  className="gap-1"
+                >
+                  下一步<ChevronRight className="w-4 h-4" />
+                </Button>
+              ) : (
+                <Button
+                  type="submit"
+                  className="playful-cta h-14 px-7 text-base rounded-2xl gap-2"
+                  disabled={createQuestion.isPending || !canSubmit}
+                >
+                  {createQuestion.isPending ? (
+                    <><div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent" />建立中…</>
+                  ) : (
+                    <><span className="text-xl">🚀</span>建立題目，準備上課！</>
+                  )}
+                </Button>
+              )}
+            </div>
+          ) : (
+            <Button
+              type="submit"
+              className="playful-cta w-full h-16 text-lg rounded-3xl gap-2.5"
+              disabled={createQuestion.isPending || !canSubmit}
+            >
+              {createQuestion.isPending ? (
+                <div className="flex items-center gap-2">
+                  <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
+                  建立中...
+                </div>
+              ) : (
+                <><span className="text-2xl">🚀</span>建立題目，準備上課！</>
+              )}
+            </Button>
+          )}
+
+          {/* quick 模式的提示文字 */}
+          {formMode === "quick" && !imageUrl && (
+            <p className="text-sm text-muted-foreground text-center animate-fade-in">
+              請先上傳或截取圖片
+            </p>
+          )}
+          {formMode === "quick" && optionsRequired && validOptionCount < 2 && (
+            <p className="text-sm text-muted-foreground text-center animate-fade-in">
+              請至少填寫兩個選項（目前已填寫 {validOptionCount} 個）
+            </p>
+          )}
+        </form>
+      ) : (
+        <div className="space-y-6 animate-fade-in">
+          <div className="flex items-end justify-between mb-4 gap-3 flex-wrap">
+            <div>
+              <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-red-100 text-red-600 text-xs font-extrabold mb-2">
+                <span className="w-1.5 h-1.5 rounded-full bg-red-600 animate-playful-pulse" />
+                投票進行中
+              </span>
+              <h2 className="text-2xl sm:text-3xl lg:text-4xl font-extrabold text-slate-900 leading-tight">即時計票中</h2>
+            </div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setEditDialogOpen(true)}
+                className="gap-1.5 border-blue-200 text-blue-700 hover:bg-blue-50"
+                title="編輯題目（選項打錯時用）"
+              >
+                <Pencil className="w-4 h-4" />編輯題目
+              </Button>
+              <Link href={`/present/${createdQuestion.id}`}>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="gap-1.5 border-purple-200 text-purple-700 hover:bg-purple-50"
+                  title="開啟全螢幕投影模式"
+                >
+                  <Monitor className="w-4 h-4" />課堂模式
+                </Button>
+              </Link>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => exportQuestionVotes(createdQuestion).catch((err) => toast({ title: "匯出失敗", description: err.message, variant: "destructive" }))}
+                className="gap-1.5 border-emerald-200 text-emerald-700 hover:bg-emerald-50"
+              >
+                <Download className="w-4 h-4" />匯出 CSV
+              </Button>
+              <ShareButton
+                url={window.location.href}
+                question={createdQuestion}
+                votes={[]}
+              />
+            </div>
+          </div>
+
+          <Card className="p-3 sm:p-4 rounded-3xl border-0 shadow-[0_4px_20px_rgba(15,23,42,0.04)]">
+            <TeacherImageDisplay imageUrl={createdQuestion.imageUrl} />
+          </Card>
+
+          <div className="grid md:grid-cols-2 gap-6">
+            <QRDisplay questionId={createdQuestion.id} roomCode={createdQuestion.roomCode} />
+            {createdQuestion.questionType === "shortanswer" ? (
+              <ShortAnswerLiveCloud questionId={createdQuestion.id} />
+            ) : (
+              <VotingStats question={createdQuestion} />
+            )}
+          </div>
+
+          {/* 電腦版：倒數計時（窄）與正確答案管理（寬）並排，避免整條全寬只放 3 顆按鈕 */}
+          <div className="grid xl:grid-cols-[minmax(0,1fr)_minmax(0,2fr)] gap-6 items-start">
+          {/* 倒數計時控制 */}
+          <Card className="p-4 sm:p-6 bg-gradient-to-r from-amber-50 to-orange-50 border-amber-200">
+            <div className="flex items-center gap-3 mb-3">
+              <div className="p-1.5 bg-amber-100 rounded-full">
+                <Timer className="w-4 h-4 text-amber-600" />
+              </div>
+              <div className="flex-1">
+                <h3 className="text-sm sm:text-base font-bold text-gray-800">倒數計時投票</h3>
+                <p className="text-xs text-gray-600">
+                  {createdQuestion.votingEndsAt
+                    ? "倒數中…結束後學生自動無法投票"
+                    : "限時投票更刺激！按下後學生端會看到倒數"}
+                </p>
+              </div>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {[30, 60, 90].map((sec) => (
+                <Button
+                  key={sec}
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => firestore.startCountdown(createdQuestion.id, sec).catch((err) => toast({ title: "啟動失敗", description: err.message, variant: "destructive" }))}
+                  disabled={!!createdQuestion.votingEndsAt}
+                  className="border-amber-300 text-amber-800 hover:bg-amber-100 disabled:opacity-50"
+                >
+                  ⏱ {sec} 秒
+                </Button>
+              ))}
+              {createdQuestion.votingEndsAt && (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => firestore.cancelCountdown(createdQuestion.id).catch((err) => toast({ title: "取消失敗", description: err.message, variant: "destructive" }))}
+                  className="text-red-600 hover:bg-red-50 ml-auto"
+                >
+                  <XIcon className="w-3.5 h-3.5 mr-1" />取消倒數
+                </Button>
+              )}
+            </div>
+          </Card>
+
+          {/* Correct Answer Management */}
+          <Card className="p-4 sm:p-6 card-hover shadow-lg border-0 bg-gradient-to-r from-green-50 to-blue-50">
+            <div className="flex items-center gap-3 mb-6">
+              <div className="p-2 bg-green-100 rounded-full">
+                <CheckCircle2 className="w-5 h-5 text-green-600" />
+              </div>
+              <h3 className="text-lg sm:text-xl font-bold text-gray-800">
+                正確答案管理
+              </h3>
+            </div>
+
+            <div className="space-y-6">
+              <div>
+                <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
+                  <p className="text-sm font-medium text-gray-700">
+                    {createdQuestion.questionType === "multiple"
+                      ? "設定正確答案（可複選，全選對才算對）："
+                      : "設定正確答案選項："}
+                  </p>
+                  {(createdQuestion.questionType === "multiple"
+                    ? Array.isArray(createdQuestion.correctAnswers) && createdQuestion.correctAnswers.length > 0
+                    : createdQuestion.correctAnswer !== null) && (
+                    <span className="text-xs px-2 py-1 bg-green-100 text-green-700 rounded-full">
+                      已設定 {createdQuestion.questionType === "multiple" && Array.isArray(createdQuestion.correctAnswers)
+                        ? `${createdQuestion.correctAnswers.length} 項`
+                        : ""}
+                    </span>
+                  )}
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+                  {createdQuestion.options.map((option: string, index: number) => {
+                    const isMulti = createdQuestion.questionType === "multiple";
+                    const isCorrect = isMulti
+                      ? Array.isArray(createdQuestion.correctAnswers) && createdQuestion.correctAnswers.includes(index)
+                      : createdQuestion.correctAnswer === index;
+                    return (
+                      <Button
+                        key={index}
+                        variant={isCorrect ? "default" : "outline"}
+                        size="default"
+                        onClick={() => isMulti ? toggleMultiCorrect.mutate(index) : setCorrectAnswer.mutate(index)}
+                        disabled={setCorrectAnswer.isPending || toggleMultiCorrect.isPending}
+                        className={`h-auto min-h-[3rem] p-3 text-left text-sm font-medium transition-all duration-200 ${
+                          isCorrect
+                            ? "bg-green-500 hover:bg-green-600 text-white shadow-lg transform hover:scale-105"
+                            : "hover:bg-green-50 hover:border-green-300 hover:shadow-md active:scale-95"
+                        }`}
+                      >
+                        <div className="w-full">
+                          <div className="font-bold text-xs mb-1 flex items-center gap-1">
+                            {isMulti && (
+                              <span className={`inline-flex items-center justify-center w-3.5 h-3.5 rounded border ${isCorrect ? "bg-white border-white" : "border-current opacity-60"}`}>
+                                {isCorrect && <CheckCircle2 className="w-3 h-3 text-green-600" />}
+                              </span>
+                            )}
+                            選項 {index + 1}
+                          </div>
+                          <div className="text-xs leading-tight break-words">
+                            {option.length > 30 ? `${option.substring(0, 30)}...` : option}
+                          </div>
+                        </div>
+                      </Button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="bg-white rounded-lg border border-gray-200 p-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                  <div className="flex-1">
+                    <div className="flex items-center gap-3 mb-2">
+                      <span className="text-sm font-semibold text-gray-800">
+                        答案顯示狀態
+                      </span>
+                      <span className={`text-xs px-2 py-1 rounded-full font-medium ${createdQuestion.showAnswer
+                        ? "bg-green-100 text-green-700"
+                        : "bg-gray-100 text-gray-600"
+                        }`}>
+                        {createdQuestion.showAnswer ? "已公開" : "已隱藏"}
+                      </span>
+                    </div>
+                    <p className="text-xs text-gray-600 leading-relaxed">
+                      {createdQuestion.showAnswer
+                        ? "學生現在可以在投票結果中看到正確答案標記"
+                        : "正確答案僅對老師可見，學生無法看到"}
+                    </p>
+                  </div>
+                  <Button
+                    onClick={() => toggleShowAnswer.mutate(!createdQuestion.showAnswer)}
+                    disabled={toggleShowAnswer.isPending || createdQuestion.correctAnswer === null}
+                    variant={createdQuestion.showAnswer ? "destructive" : "default"}
+                    size="default"
+                    className={`flex items-center gap-2 min-w-[120px] h-10 font-medium transition-all duration-200 ${createdQuestion.showAnswer
+                      ? "hover:shadow-lg"
+                      : "bg-blue-500 hover:bg-blue-600 hover:shadow-lg"
+                      }`}
+                  >
+                    {createdQuestion.showAnswer ? (
+                      <>
+                        <EyeOff className="w-4 h-4" />
+                        隱藏答案
+                      </>
+                    ) : (
+                      <>
+                        <Eye className="w-4 h-4" />
+                        顯示答案
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </div>
+
+              {createdQuestion.correctAnswer !== null && (
+                <div className="bg-gradient-to-r from-green-50 to-emerald-50 border border-green-300 rounded-lg p-4 shadow-sm">
+                  <div className="flex items-start gap-3">
+                    <div className="p-1 bg-green-100 rounded-full flex-shrink-0 mt-0.5">
+                      <CheckCircle2 className="w-4 h-4 text-green-600" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <h4 className="text-sm font-semibold text-green-800 mb-1">
+                        目前正確答案
+                      </h4>
+                      <div className="bg-white rounded-md p-3 border border-green-200">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="text-xs font-bold bg-green-100 text-green-700 px-2 py-0.5 rounded">
+                            選項 {createdQuestion.correctAnswer + 1}
+                          </span>
+                        </div>
+                        <p className="text-sm text-gray-700 leading-relaxed break-words">
+                          {createdQuestion.options[createdQuestion.correctAnswer]}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          </Card>
+          </div>
+
+          {/* Additional Controls */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+            <Button
+              onClick={() => resetVotes.mutate()}
+              disabled={resetVotes.isPending}
+              variant="outline"
+              className="flex items-center justify-center gap-2 h-12 sm:h-14 font-medium transition-all duration-200 hover:bg-orange-50 hover:border-orange-300 text-orange-600 hover:shadow-md active:scale-95 border-2"
+            >
+              <RefreshCw className={`w-5 h-5 ${resetVotes.isPending ? 'animate-spin' : ''}`} />
+              <span className="text-sm sm:text-base">重置投票</span>
+            </Button>
+            <Button
+              onClick={resetAll}
+              className="flex items-center justify-center gap-2 h-12 sm:h-14 font-medium transition-all duration-200 bg-red-50 hover:bg-red-100 text-red-600 hover:shadow-md active:scale-95 border-2 border-red-200 hover:border-red-300"
+              variant="ghost"
+            >
+              <RefreshCw className="w-5 h-5" />
+              <span className="text-sm sm:text-base">重新建立投票</span>
+            </Button>
+          </div>
+
+          {/* 沒登入的老師：提醒登入才能把題目存進題庫（放在頁面最下方，避免投影時太搶眼） */}
+          {currentUser?.isAnonymous && (
+            <div className="playful-card p-4 sm:p-5 flex items-center justify-between gap-3 flex-wrap border border-blue-100">
+              <div className="min-w-0 text-sm sm:text-base text-slate-700 leading-relaxed">
+                💾 這題目前只存在<b className="text-slate-900">這台電腦的瀏覽器</b>，換電腦或清除瀏覽紀錄就找不到了
+                <br className="hidden sm:block" />
+                用 Google 登入，題目會存進題庫，下次上課按「啟用」就能再用
+              </div>
+              <Button
+                type="button"
+                onClick={handleGoogleSignIn}
+                className="h-11 gap-1.5 rounded-full playful-cta px-5"
+              >
+                <LogIn className="w-4 h-4" />Google 登入
+              </Button>
+            </div>
+          )}
+        </div>
+      )}
+
+      <EditQuestionDialog
+        question={createdQuestion}
+        open={editDialogOpen}
+        onOpenChange={setEditDialogOpen}
+        onSaved={(updated) => setCreatedQuestion(updated)}
+      />
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Playful Campus 題型選擇列 — 4 張 emoji 卡（單選 / 多選 / 是非 / 簡答）
+ * 選中時：邊框換成題型主色、白底、上浮 3px、彩色光暈
+ */
+function PlayfulTypeRow({
+  questionType,
+  setQuestionType,
+}: {
+  questionType: "single" | "multiple" | "truefalse" | "shortanswer";
+  setQuestionType: (t: "single" | "multiple" | "truefalse" | "shortanswer") => void;
+}) {
+  const types = [
+    { k: "single", label: "單選", emoji: "🎯", color: "#3B82F6", hint: "一題一答" },
+    { k: "multiple", label: "多選", emoji: "✨", color: "#8B5CF6", hint: "可複選" },
+    { k: "truefalse", label: "是非", emoji: "⚡", color: "#F59E0B", hint: "對 / 錯" },
+    { k: "shortanswer", label: "簡答", emoji: "💬", color: "#10B981", hint: "文字輸入" },
+  ] as const;
+  return (
+    <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      {types.map((t) => {
+        const on = questionType === t.k;
+        return (
+          <button
+            key={t.k}
+            type="button"
+            onClick={() => setQuestionType(t.k)}
+            className="rounded-2xl text-center p-4 transition-all"
+            style={{
+              background: on ? "#fff" : "rgba(255,255,255,0.7)",
+              border: on ? `2px solid ${t.color}` : "2px solid transparent",
+              transform: on ? "translateY(-3px)" : "translateY(0)",
+              boxShadow: on ? `0 10px 20px ${t.color}40` : "none",
+            }}
+          >
+            <div className="text-3xl mb-1.5">{t.emoji}</div>
+            <div className="font-extrabold text-sm" style={{ color: on ? t.color : "#0F172A" }}>{t.label}</div>
+            <div className="text-xs text-slate-400 mt-0.5">{t.hint}</div>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/** 簡答題即時答案文字雲 — 訂閱 votes textAnswer 並顯示 */
+function ShortAnswerLiveCloud({ questionId }: { questionId: string }) {
+  const [answers, setAnswers] = useState<Array<{ id: string; text: string; userId?: string }>>([]);
+  useEffect(() => {
+    return firestore.listenToTextAnswers(questionId, (list) => setAnswers(list));
+  }, [questionId]);
+  return (
+    <Card className="p-5 sm:p-6 rounded-3xl border-0 shadow-[0_4px_20px_rgba(15,23,42,0.04)] min-h-[280px]" style={{ background: "linear-gradient(135deg, #EFF6FF, #FCE7F3)" }}>
+      <div className="flex items-center justify-between mb-3">
+        <h3 className="text-sm font-extrabold text-slate-900 flex items-center gap-1.5">
+          💬 即時答案文字雲
+        </h3>
+        <span className="text-xs text-blue-700 bg-white px-3 py-1 rounded-full font-extrabold shadow-sm">
+          {answers.length} 則
+        </span>
+      </div>
+      <WordCloud answers={answers} minSize={16} maxSize={48} />
+    </Card>
+  );
+}
+
+/** 老師端圖片顯示：支援單張圖與 GALLERY:: 多張歌手照片 */
+function TeacherImageDisplay({ imageUrl }: { imageUrl: string }) {
+  if (imageUrl?.startsWith("GALLERY::")) {
+    try {
+      const items: Array<{ letter: string; name: string; url: string }> = JSON.parse(
+        imageUrl.slice("GALLERY::".length)
+      );
+      return (
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-3">
+          {items.map((item, idx) => (
+            <div key={idx} className="rounded-xl overflow-hidden border border-slate-200 bg-slate-900 text-white">
+              <img src={item.url} alt={item.name} className="w-full h-32 object-cover" />
+              <div className="px-2 py-1.5 text-xs font-bold truncate">
+                {item.letter}. {item.name}
+              </div>
+            </div>
+          ))}
+        </div>
+      );
+    } catch {
+      return null;
+    }
+  }
+  return (
+    <div className="flex justify-center">
+      <img
+        src={imageUrl}
+        alt="問題圖片"
+        className="max-w-full max-h-[40vh] lg:max-h-[55vh] w-auto h-auto object-contain rounded-2xl"
+      />
+    </div>
+  );
+}
