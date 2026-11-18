@@ -94,20 +94,20 @@ export function ScreenshotUpload({ onImageSelect }: ScreenshotUploadProps) {
     return dataUrl;
   };
 
-  // 將多張歌手照片自動拼成帶 A~J 編號與姓名的海報網格
+  // 將多張歌手照片自動拼成放大且清晰的 A~J 編號與姓名的海報網格
   const combineMultipleImagesToGrid = async (files: File[]): Promise<string> => {
     const selectedFiles = files.slice(0, 12); // 最多支援 12 張（例如 10 位歌手）
     const images = await Promise.all(selectedFiles.map((f) => loadImageElement(f)));
     const count = images.length;
 
-    // 決定網格欄數（10 張照片會排成 5 欄 x 2 列）
-    const cols = count <= 2 ? 2 : count <= 4 ? 2 : count <= 6 ? 3 : count <= 8 ? 4 : 5;
+    // 改為 2 欄排版（若只有 1 張則 1 欄），讓每張歌手照片變得非常大且清晰
+    const cols = count <= 1 ? 1 : 2;
     const rows = Math.ceil(count / cols);
 
-    const cellWidth = 300;
-    const cellHeight = 360;
-    const padding = 16;
-    const labelHeight = 46;
+    const cellWidth = 500;  // 放大卡片寬度
+    const cellHeight = 580; // 放大卡片高度
+    const padding = 20;
+    const labelHeight = 65; // 放大底部名稱列空間
 
     const canvas = document.createElement("canvas");
     canvas.width = cols * cellWidth + (cols + 1) * padding;
@@ -146,7 +146,7 @@ export function ScreenshotUpload({ onImageSelect }: ScreenshotUploadProps) {
 
       ctx.drawImage(img, sx, sy, sWidth, sHeight, x, y, cellWidth, photoAreaHeight);
 
-      // 底部歌手名稱列（自動讀取檔名，例如 "1號 陳小明.jpg" -> "1號 陳小明"）
+      // 底部歌手名稱列（自動讀取檔名）
       const letter = String.fromCharCode(65 + index); // A, B, C...
       const rawName = selectedFiles[index].name.replace(/\.[^/.]+$/, "");
       const badgeColor = BADGE_COLORS[index % BADGE_COLORS.length];
@@ -154,27 +154,27 @@ export function ScreenshotUpload({ onImageSelect }: ScreenshotUploadProps) {
       ctx.fillStyle = "#0f172a";
       ctx.fillRect(x, y + photoAreaHeight, cellWidth, labelHeight);
 
-      // 左上角彩色 A/B/C 圓形徽章
+      // 左上角放大彩色 A/B/C 圓形徽章
       ctx.beginPath();
-      ctx.arc(x + 28, y + 28, 22, 0, Math.PI * 2);
+      ctx.arc(x + 36, y + 36, 28, 0, Math.PI * 2);
       ctx.fillStyle = badgeColor;
       ctx.fill();
-      ctx.lineWidth = 3;
+      ctx.lineWidth = 3.5;
       ctx.strokeStyle = "#ffffff";
       ctx.stroke();
 
       ctx.fillStyle = "#ffffff";
+      ctx.font = "bold 28px sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(letter, x + 36, y + 37);
+
+      // 底部文字：代號 + 檔名（放大字型）
+      ctx.fillStyle = "#ffffff";
       ctx.font = "bold 24px sans-serif";
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
-      ctx.fillText(letter, x + 28, y + 29);
-
-      // 底部文字：代號 + 檔名
-      ctx.fillStyle = "#ffffff";
-      ctx.font = "bold 20px sans-serif";
-      ctx.textAlign = "center";
-      ctx.textBaseline = "middle";
-      const displayLabel = `${letter}. ${rawName}`.slice(0, 16);
+      const displayLabel = `${letter}. ${rawName}`.slice(0, 22);
       ctx.fillText(displayLabel, x + cellWidth / 2, y + photoAreaHeight + labelHeight / 2);
     });
 
@@ -258,7 +258,7 @@ export function ScreenshotUpload({ onImageSelect }: ScreenshotUploadProps) {
     triggerConfetti();
     toast({
       title: "上傳成功",
-      description: count > 1 ? `已自動將 ${count} 張照片合成為 A~${String.fromCharCode(64 + count)} 歌手海報！` : "圖片已成功上傳",
+      description: count > 1 ? `已自動將 ${count} 張照片合成為大圖 A~${String.fromCharCode(64 + count)} 歌手海報！` : "圖片已成功上傳",
       variant: "success",
     });
   };
@@ -276,7 +276,7 @@ export function ScreenshotUpload({ onImageSelect }: ScreenshotUploadProps) {
         onImageSelect(base64);
         handleUploadSuccess(1);
       } else {
-        // 選擇多張圖片（例如 10 位歌手）時，自動合成為 A~J 編號網格
+        // 選擇多張圖片時，自動合成為放大版 A~J 編號網格
         const gridBase64 = await combineMultipleImagesToGrid(files);
         setPreview(gridBase64);
         onImageSelect(gridBase64);
@@ -527,7 +527,7 @@ export function ScreenshotUpload({ onImageSelect }: ScreenshotUploadProps) {
         {/* 只在非編輯模式下顯示驗證提示 */}
         {!isEditing && !preview && (
           <p className="text-sm text-muted-foreground text-center animate-fade-in">
-            請先上傳或截取圖片（按住 Ctrl 或 Shift 可一次選取 10 張歌手照片自動合成海報）
+            請先上傳或截取圖片（按住 Ctrl 或 Shift 可一次選取 10 張歌手照片自動合成放大海報）
           </p>
         )}
       </div>
