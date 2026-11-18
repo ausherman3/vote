@@ -1,208 +1,301 @@
-import { useState, useEffect } from "react";
-import { useMutation } from "@tanstack/react-query";
+import { useState, useRef, useEffect } from "react";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { Camera, Scissors, Smartphone, Trash2, Check, Clipboard, Edit3, Palette } from "lucide-react";
+import { CropIcon } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import * as firestore from "@/lib/firestore-voting";
-import { auth } from "@/lib/firebase";
-import { onAuthStateChanged } from "firebase/auth";
-import { useParams } from "wouter";
-import { motion, AnimatePresence } from "framer-motion";
-import { CheckCircle2, ChevronLeft, ChevronRight, X, ZoomIn } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
-import { ReactionBar } from "@/components/reaction-bar";
 import { useConfetti } from "@/hooks/use-confetti";
-import { useVotingSound } from "@/hooks/use-voting-sounds";
-import { errorDetails, reportServiceEvent } from "@/lib/telemetry";
+import ReactCrop, { type Crop as ReactCropType } from 'react-image-crop';
+import 'react-image-crop/dist/ReactCrop.css';
+import { Whiteboard } from "./whiteboard";
+import { ImageAnnotator } from "./image-annotator";
 
-export default function Student() {
+interface ScreenshotUploadProps {
+  onImageSelect: (image: string) => void;
+}
+
+const BADGE_COLORS = [
+  "#ef4444", "#3b82f6", "#eab308", "#22c55e", "#a855f7",
+  "#f97316", "#ec4899", "#14b8a6", "#6366f1", "#84cc16"
+];
+
+export function ScreenshotUpload({ onImageSelect }: ScreenshotUploadProps) {
+  const [preview, setPreview] = useState<string | null>(null);
+  const [isEditing, setIsEditing] = useState(false);
+  const [crop, setCrop] = useState<ReactCropType>();
+  const [isWhiteboardOpen, setIsWhiteboardOpen] = useState(false);
+  const [isAnnotatorOpen, setIsAnnotatorOpen] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const cardRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
-  const params = useParams<{ id: string }>();
-  const questionId = params.id;
-  const [question, setQuestion] = useState<any | null>(null);
-  const [notFound, setNotFound] = useState(false);
-  const [hasVoted, setHasVoted] = useState(false);
-  const [showSuccessOverlay, setShowSuccessOverlay] = useState(false);
-  const [currentSlide, setCurrentSlide] = useState(0);
-  const [isZoomed, setIsZoomed] = useState(false);
   const { triggerConfetti } = useConfetti();
-  const { playVoteSubmitted } = useVotingSound();
-  const [selectedOption, setSelectedOption] = useState<number | null>(null);
-  const [animatedCounts, setAnimatedCounts] = useState<Record<number, number>>({});
-  const [totals, setTotals] = useState<Record<number, number>>({});
-  const [totalVotes, setTotalVotes] = useState(0);
 
-  useEffect(() => {
-    let unsubQ: (() => void) | undefined;
-    let unsubV: (() => void) | undefined;
-    let started = false;
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
 
-    const startSubscriptions = () => {
-      if (started) return;
-      started = true;
-      if (questionId) {
-        unsubQ = firestore.listenToQuestion(questionId, (q) => {
-          if (q) {
-            setQuestion(q);
-            setNotFound(false);
-          } else {
-            setNotFound(true);
-          }
-        });
-        unsubV = firestore.getVotesStats(questionId, (stats, totalVoters) => {
-          setTotals(stats);
-          setTotalVotes(totalVoters);
-        });
-      } else {
-        unsubQ = firestore.getActiveQuestion((q) => {
-          setQuestion(q);
-        });
-      }
-    };
-
-    if (auth.currentUser) startSubscriptions();
-    const unsubAuth = onAuthStateChanged(auth, (user) => {
-      if (user) startSubscriptions();
+  const loadImageElement = (file: File | Blob): Promise<HTMLImageElement> => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const img = new Image();
+        img.onload = () => resolve(img);
+        img.onerror = reject;
+        img.src = reader.result as string;
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
     });
+  };
 
-    return () => {
-      unsubAuth();
-      unsubQ?.();
-      unsubV?.();
-    };
-  }, [questionId]);
+  const compressSingleImage = async (file: File | Blob): Promise<string> => {
+    const img = await loadImageElement(file);
+    const MAX_DIM = 1280;
+    let width = img.width;
+    let height = img.height;
 
-  useEffect(() => {
-    if (question?.id) {
-      const voted = localStorage.getItem(`voted_${question.id}`);
-      if (voted) {
-        setHasVoted(true);
-        setSelectedOption(parseInt(voted));
+    if (width > MAX_DIM || height > MAX_DIM) {
+      if (width > height) {
+        height = Math.round((height * MAX_DIM) / width);
+        width = MAX_DIM;
       } else {
-        setHasVoted(false);
-        setSelectedOption(null);
+        width = Math.round((width * MAX_DIM) / height);
+        height = MAX_DIM;
       }
     }
-  }, [question?.id]);
 
-  const imagesList = Array.isArray(question?.imageUrl) ? question.imageUrl : question?.imageUrl ? [question.imageUrl] : [];
+    const canvas = document.createElement("canvas");
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return img.src;
 
-  const nextSlide = () => setCurrentSlide(prev => (prev + 1) % imagesList.length);
-  const prevSlide = () => setCurrentSlide(prev => (prev - 1 + imagesList.length) % imagesList.length);
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, width, height);
+    ctx.drawImage(img, 0, 0, width, height);
 
-  const isExpired = firestore.isQuestionExpired(question);
-  const requireIdentity: boolean = !!question?.requireIdentity;
+    let quality = 0.75;
+    let dataUrl = canvas.toDataURL("image/jpeg", quality);
+    while (dataUrl.length > 650 * 1024 && quality > 0.3) {
+      quality -= 0.1;
+      dataUrl = canvas.toDataURL("image/jpeg", quality);
+    }
+    return dataUrl;
+  };
 
-  const [committedName] = useState<string>(() => localStorage.getItem("voter_name") || "");
-  const isMultiple = question?.questionType === "multiple";
-  const [multiSelection, setMultiSelection] = useState<Set<number>>(new Set());
+  // 將多張照片排成單欄大圖串列（每張照片滿版寬度，上下排列，非常清晰）
+  const combineMultipleImagesToLargeFeed = async (files: File[]): Promise<string> => {
+    const selectedFiles = files.slice(0, 12);
+    const images = await Promise.all(selectedFiles.map((f) => loadImageElement(f)));
+    
+    const cellWidth = 800; // 寬度加大，確保手機上極為清晰
+    const cellHeight = 700; // 每張歌手卡片的高度
+    const padding = 24;
+    const labelHeight = 80;
 
-  const vote = useMutation({
-    mutationFn: async (selection: firestore.VoteSelection) => {
-      if (!question) return;
-      if (isExpired) throw new Error("此題投票已結束");
-      await firestore.addVote(question.id, selection, requireIdentity ? { name: committedName } : undefined);
-    },
-    onSuccess: (_, selection) => {
-      triggerConfetti();
-      try { playVoteSubmitted(); } catch {}
-      setShowSuccessOverlay(true);
-      window.setTimeout(() => setShowSuccessOverlay(false), 1800);
-      setHasVoted(true);
-      setSelectedOption(typeof selection === "number" ? selection : null);
-      if (question?.id) {
-        localStorage.setItem(`voted_${question.id}`, String(selection));
+    const canvas = document.createElement("canvas");
+    canvas.width = cellWidth + (padding * 2);
+    canvas.height = (images.length * (cellHeight + padding)) + padding;
+
+    const ctx = canvas.getContext("2d");
+    if (!ctx) throw new Error("無法建立畫布");
+
+    // 深色背景
+    ctx.fillStyle = "#0f172a";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    images.forEach((img, index) => {
+      const x = padding;
+      const y = padding + index * (cellHeight + padding);
+
+      // 白色卡片底框
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(x, y, cellWidth, cellHeight);
+
+      const photoAreaHeight = cellHeight - labelHeight;
+      const imgRatio = img.width / img.height;
+      const targetRatio = cellWidth / photoAreaHeight;
+      let sx = 0, sy = 0, sWidth = img.width, sHeight = img.height;
+
+      if (imgRatio > targetRatio) {
+        sWidth = img.height * targetRatio;
+        sx = (img.width - sWidth) / 2;
+      } else {
+        sHeight = img.width / targetRatio;
+        sy = (img.height - sHeight) / 2;
       }
-    },
-    onError: (error: any) => {
-      toast({ title: "投票失敗", description: error.message, variant: "destructive" });
-    },
-  });
 
-  if (!question) {
-    return (
-      <div className="page-container text-center">
-        <h1 className="text-2xl font-bold gradient-text">目前沒有活動的問題</h1>
-      </div>
-    );
-  }
+      ctx.drawImage(img, sx, sy, sWidth, sHeight, x, y, cellWidth, photoAreaHeight);
+
+      const letter = String.fromCharCode(65 + index); // A, B, C...
+      const rawName = selectedFiles[index].name.replace(/\.[^/.]+$/, "");
+      const badgeColor = BADGE_COLORS[index % BADGE_COLORS.length];
+
+      // 底部名稱列
+      ctx.fillStyle = "#1e293b";
+      ctx.fillRect(x, y + photoAreaHeight, cellWidth, labelHeight);
+
+      // 圓形代號徽章
+      ctx.beginPath();
+      ctx.arc(x + 45, y + photoAreaHeight + labelHeight / 2, 30, 0, Math.PI * 2);
+      ctx.fillStyle = badgeColor;
+      ctx.fill();
+      ctx.lineWidth = 4;
+      ctx.strokeStyle = "#ffffff";
+      ctx.stroke();
+
+      ctx.fillStyle = "#ffffff";
+      ctx.font = "bold 32px sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(letter, x + 45, y + photoAreaHeight + labelHeight / 2 + 2);
+
+      // 歌手名稱文字
+      ctx.fillStyle = "#ffffff";
+      ctx.font = "bold 28px sans-serif";
+      ctx.textAlign = "left";
+      ctx.textBaseline = "middle";
+      const displayLabel = `${letter}. ${rawName}`;
+      ctx.fillText(displayLabel, x + 95, y + photoAreaHeight + labelHeight / 2 + 2);
+    });
+
+    let quality = 0.8;
+    let dataUrl = canvas.toDataURL("image/jpeg", quality);
+    while (dataUrl.length > 900 * 1024 && quality > 0.3) {
+      quality -= 0.1;
+      dataUrl = canvas.toDataURL("image/jpeg", quality);
+    }
+    return dataUrl;
+  };
+
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const fileList = e.target.files;
+    if (!fileList || fileList.length === 0) return;
+    const files = Array.from(fileList);
+
+    try {
+      if (files.length === 1) {
+        const base64 = await compressSingleImage(files[0]);
+        setPreview(base64);
+        onImageSelect(base64);
+        triggerConfetti();
+        toast({ title: "上傳成功", variant: "success" });
+      } else {
+        const feedBase64 = await combineMultipleImagesToLargeFeed(files);
+        setPreview(feedBase64);
+        onImageSelect(feedBase64);
+        triggerConfetti();
+        toast({ title: "上傳成功", description: `已成功合成 ${files.length} 張大圖歌手海報！`, variant: "success" });
+      }
+    } catch {
+      toast({ title: "處理失敗", variant: "destructive" });
+    }
+  };
+
+  const handlePaste = async () => {
+    try {
+      const clipboard = await navigator.clipboard.read();
+      for (const item of clipboard) {
+        const imageType = item.types.find(t => t.startsWith('image/'));
+        if (imageType) {
+          const blob = await item.getType(imageType);
+          const base64 = await compressSingleImage(blob);
+          setPreview(base64);
+          onImageSelect(base64);
+          triggerConfetti();
+          return;
+        }
+      }
+    } catch {
+      toast({ title: "無法讀取剪貼簿", variant: "destructive" });
+    }
+  };
+
+  const handleDeleteImage = () => {
+    setPreview(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+    toast({ title: "已刪除圖片", variant: "success" });
+  };
+
+  const handleCropComplete = () => {
+    if (!imageRef.current || !crop) return;
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const scaleX = imageRef.current.naturalWidth / imageRef.current.width;
+    const scaleY = imageRef.current.naturalHeight / imageRef.current.height;
+
+    canvas.width = crop.width;
+    canvas.height = crop.height;
+    ctx.drawImage(imageRef.current, crop.x * scaleX, crop.y * scaleY, crop.width * scaleX, crop.height * scaleY, 0, 0, crop.width, crop.height);
+
+    const base64 = canvas.toDataURL('image/jpeg', 0.8);
+    setPreview(base64);
+    onImageSelect(base64);
+    setIsEditing(false);
+    setCrop(undefined);
+  };
 
   return (
-    <div className="playful-shell min-h-screen p-2 sm:p-4">
-      {/* 全螢幕左右滑動照片檢視器 */}
-      <AnimatePresence>
-        {isZoomed && imagesList.length > 0 && (
-          <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[9999] bg-black/95 flex flex-col items-center justify-center p-2">
-            <button onClick={() => setIsZoomed(false)} className="absolute top-4 right-4 bg-white/20 text-white p-3 rounded-full">
-              <X className="w-6 h-6" />
-            </button>
-            <div className="text-white text-base mb-2 font-bold">
-              歌手照片 {currentSlide + 1} / {imagesList.length}
-            </div>
-            <div className="relative w-full max-w-2xl h-[75vh] flex items-center justify-center">
-              {imagesList.length > 1 && (
-                <>
-                  <button onClick={prevSlide} className="absolute left-2 z-10 bg-white/30 text-white p-3 rounded-full hover:bg-white/50">
-                    <ChevronLeft className="w-8 h-8" />
-                  </button>
-                  <button onClick={nextSlide} className="absolute right-2 z-10 bg-white/30 text-white p-3 rounded-full hover:bg-white/50">
-                    <ChevronRight className="w-8 h-8" />
-                  </button>
-                </>
-              )}
-              <motion.img key={currentSlide} src={imagesList[currentSlide]} initial={{ opacity: 0, x: 50 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -50 }} className="max-h-full max-w-full object-contain rounded-xl" />
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+    <Card ref={cardRef} className="p-6">
+      <div className="space-y-4">
+        <div className="flex items-center gap-4 flex-wrap">
+          <Button type="button" onClick={() => setIsWhiteboardOpen(true)} className="bg-yellow-400 text-black hover:bg-yellow-500">
+            <Edit3 className="h-4 w-4 mr-2" />手寫白板
+          </Button>
+          <Button type="button" onClick={() => fileInputRef.current?.click()} className="bg-yellow-400 text-black hover:bg-yellow-500">
+            <Camera className="h-4 w-4 mr-2" />上傳 10 張歌手照片（可多選）
+          </Button>
+          <Button type="button" onClick={handlePaste} className="bg-yellow-400 text-black hover:bg-yellow-500">
+            <Clipboard className="h-4 w-4 mr-2" />貼上圖片
+          </Button>
+          <Input ref={fileInputRef} type="file" accept="image/*" multiple className="hidden" onChange={handleFileSelect} />
+        </div>
 
-      <div className="max-w-2xl mx-auto relative z-10">
-        <Card className="overflow-hidden shadow-xl border-0 bg-white/95 backdrop-blur-sm rounded-3xl">
-          {imagesList.length > 0 && (
-            <div className="relative group bg-slate-900 cursor-pointer" onClick={() => setIsZoomed(true)}>
-              <div className="relative h-[320px] sm:h-[400px] flex items-center justify-center">
-                {imagesList.length > 1 && (
-                  <>
-                    <button onClick={(e) => { e.stopPropagation(); prevSlide(); }} className="absolute left-2 z-10 bg-black/50 text-white p-2 rounded-full">
-                      <ChevronLeft className="w-6 h-6" />
-                    </button>
-                    <button onClick={(e) => { e.stopPropagation(); nextSlide(); }} className="absolute right-2 z-10 bg-black/50 text-white p-2 rounded-full">
-                      <ChevronRight className="w-6 h-6" />
-                    </button>
-                  </>
-                )}
-                <img src={imagesList[currentSlide]} alt="歌手照片" className="max-h-full max-w-full object-contain" />
-              </div>
-              <div className="absolute bottom-3 right-3 bg-black/70 text-white text-xs px-3 py-1 rounded-full flex items-center gap-1">
-                <ZoomIn className="w-4 h-4" /> 點擊左右滑動 / 放大 ({currentSlide + 1}/{imagesList.length})
-              </div>
+        {preview && (
+          <div className="mt-4 relative rounded-lg overflow-hidden border border-border bg-slate-900 p-2">
+            <div className="flex justify-center items-center">
+              <img src={preview} alt="預覽圖" className="max-w-full max-h-[70vh] object-contain mx-auto block rounded" />
             </div>
-          )}
-
-          <div className="p-4 sm:p-6 space-y-4">
-            <h2 className="text-lg font-extrabold text-slate-900">請選擇你最喜歡的歌手</h2>
-            <div className="flex flex-col gap-2.5">
-              {question.options.map((option: string, index: number) => (
-                <button
-                  key={index}
-                  type="button"
-                  disabled={hasVoted || vote.isPending}
-                  onClick={() => {
-                    setHasVoted(true);
-                    vote.mutate(index);
-                  }}
-                  className="w-full flex items-center gap-3 p-4 rounded-2xl border-2 bg-white hover:bg-slate-50 transition-all text-left"
-                >
-                  <span className="w-10 h-10 rounded-xl bg-blue-500 text-white font-bold flex items-center justify-center">
-                    {String.fromCharCode(65 + index)}
-                  </span>
-                  <span className="flex-1 text-lg font-bold text-slate-900">{option}</span>
-                </button>
-              ))}
+            <div className="absolute top-4 right-4 flex gap-2">
+              <Button type="button" size="icon" variant="secondary" onClick={() => setIsEditing(true)}>
+                <CropIcon className="h-4 w-4" />
+              </Button>
+              <Button type="button" size="icon" variant="destructive" onClick={handleDeleteImage}>
+                <Trash2 className="h-4 w-4" />
+              </Button>
             </div>
           </div>
-        </Card>
+        )}
+
+        {!preview && (
+          <p className="text-sm text-muted-foreground text-center">
+            請一次選取多張歌手照片（按住 Ctrl 或 Shift 複選），系統會自動製作成大圖排版串列，方便學生在手機上清晰瀏覽
+          </p>
+        )}
       </div>
-    </div>
+
+      <Dialog open={isEditing} onOpenChange={setIsEditing}>
+        <DialogContent className="max-w-3xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>裁切圖片</DialogTitle>
+            <DialogDescription>調整藍色框框以選擇保留區域。</DialogDescription>
+          </DialogHeader>
+          <div className="mt-4">
+            <ReactCrop crop={crop} onChange={c => setCrop(c)}>
+              <img ref={imageRef} src={preview || ''} className="max-w-full max-h-[60vh] object-contain mx-auto" />
+            </ReactCrop>
+          </div>
+          <div className="flex justify-end gap-2 mt-4 sticky bottom-0 bg-background p-4 border-t">
+            <Button type="button" variant="ghost" onClick={() => setIsEditing(false)}>取消</Button>
+            <Button type="button" onClick={handleCropComplete} disabled={!crop}><Check className="h-4 w-4 mr-2" />確認裁切</Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Whiteboard isOpen={isWhiteboardOpen} onClose={() => setIsWhiteboardOpen(false)} onImageGenerated={(img) => { setPreview(img); onImageSelect(img); }} />
+      {preview && <ImageAnnotator imageUrl={preview} isOpen={isAnnotatorOpen} onClose={() => setIsAnnotatorOpen(false)} onImageUpdated={(img) => { setPreview(img); onImageSelect(img); }} />}
+    </Card>
   );
 }
