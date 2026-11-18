@@ -8,7 +8,7 @@ import { auth } from "@/lib/firebase";
 import { onAuthStateChanged } from "firebase/auth";
 import { useParams } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
-import { CheckCircle2 } from "lucide-react";
+import { CheckCircle2, ZoomIn, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { ReactionBar } from "@/components/reaction-bar";
 import { useConfetti } from "@/hooks/use-confetti";
@@ -20,10 +20,10 @@ export default function Student() {
   const params = useParams<{ id: string }>();
   const questionId = params.id;
   const [question, setQuestion] = useState<any | null>(null);
-  // 區分「載入中」「找不到此題目」「沒帶 ID 直連根目錄」三種情境
   const [notFound, setNotFound] = useState(false);
   const [hasVoted, setHasVoted] = useState(false);
   const [showSuccessOverlay, setShowSuccessOverlay] = useState(false);
+  const [isZoomed, setIsZoomed] = useState(false); // 全螢幕檢視燈箱狀態
   const { triggerConfetti } = useConfetti();
   const { playVoteSubmitted } = useVotingSound();
   const [selectedOption, setSelectedOption] = useState<number | null>(null);
@@ -31,9 +31,6 @@ export default function Student() {
   const [totals, setTotals] = useState<Record<number, number>>({});
   const [totalVotes, setTotalVotes] = useState(0);
 
-  // 獲取問題數據與投票統計
-  // 重要：Firestore rules 要求 request.auth != null，必須等匿名登入完成才訂閱，
-  // 否則第一次掃 QR 進來會撞 permission_denied，listener 靜默死掉，畫面卡在「沒有活動問題」。
   useEffect(() => {
     let unsubQ: (() => void) | undefined;
     let unsubV: (() => void) | undefined;
@@ -48,7 +45,6 @@ export default function Student() {
             setQuestion(q);
             setNotFound(false);
           } else {
-            // listener 已成功送出但題目不存在 → 流水號錯誤或題目已刪除
             setNotFound(true);
           }
         });
@@ -63,7 +59,6 @@ export default function Student() {
       }
     };
 
-    // auth 已就緒就直接訂；還沒就等 onAuthStateChanged 第一次回有 user
     if (auth.currentUser) {
       startSubscriptions();
     }
@@ -78,7 +73,6 @@ export default function Student() {
     };
   }, [questionId]);
 
-  // 檢查是否已經投票
   useEffect(() => {
     if (question?.id) {
       const voted = localStorage.getItem(`voted_${question.id}`);
@@ -92,10 +86,8 @@ export default function Student() {
     }
   }, [question?.id]);
 
-  // 處理動畫計數
   useEffect(() => {
     if (hasVoted) {
-      // 為每個選項創建動畫計數
       Object.entries(totals).forEach(([optionIndex, count]) => {
         const startValue = animatedCounts[Number(optionIndex)] || 0;
         const steps = 10;
@@ -126,7 +118,6 @@ export default function Student() {
   const isExpired = firestore.isQuestionExpired(question);
   const requireIdentity: boolean = !!question?.requireIdentity;
 
-  // 倒數時間（秒，null 表不限時）
   const [secondsLeft, setSecondsLeft] = useState<number | null>(null);
   useEffect(() => {
     if (!question?.votingEndsAt) {
@@ -143,8 +134,6 @@ export default function Student() {
   }, [question?.votingEndsAt]);
   const isTimeUp = secondsLeft !== null && secondsLeft <= 0;
 
-  // 學生身份：commited = 已按下「確認進入投票」存進 localStorage 的姓名
-  // nameInput = 表單正在輸入的暫存值（按下確認前不算數）
   const [committedName, setCommittedName] = useState<string>(() => localStorage.getItem("voter_name") || "");
   const [nameInput, setNameInput] = useState<string>(() => localStorage.getItem("voter_name") || "");
   const hasIdentity = !!committedName.trim();
@@ -174,10 +163,8 @@ export default function Student() {
       await firestore.addVote(question.id, selection, requireIdentity ? { name: committedName } : undefined);
     },
     onSuccess: (_, selection) => {
-      // 🎉 慶祝動畫：confetti + 大字 overlay + 音效（多重感官回饋，學齡層越小越愛）
       triggerConfetti();
       try { playVoteSubmitted(); } catch { /* ignore audio block */ }
-      // 投票成功不再逐票通知 Google Chat，改由後端 onQuestionClosed 在題目結束時送統計卡
       setShowSuccessOverlay(true);
       window.setTimeout(() => setShowSuccessOverlay(false), 1800);
 
@@ -187,7 +174,6 @@ export default function Student() {
         variant: "success",
       });
       setHasVoted(true);
-      // 各題型 selectedOption 與 localStorage 紀錄格式
       let repIdx: number | null = null;
       let stored = "voted";
       if (typeof selection === "number") {
@@ -205,7 +191,6 @@ export default function Student() {
       }
     },
     onError: (error: any) => {
-      // 已投過、已結束是正常的拒收，直接告訴學生，不算系統錯誤
       if (firestore.isExpectedVoteRejection(error)) {
         if (error.code === firestore.VOTE_ALREADY_VOTED) setHasVoted(true);
         toast({
@@ -236,38 +221,23 @@ export default function Student() {
   });
 
   if (!question) {
-    // 帶 ID 但 listener 已回報不存在 → 流水號錯誤或題目已刪除
     if (questionId && notFound) {
       return (
         <div className="page-container text-center">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.5 }}
-            className="space-y-3"
-          >
+          <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="space-y-3">
             <div className="text-7xl">🔎</div>
             <h1 className="text-2xl font-bold gradient-text">找不到這個題目</h1>
-            <p className="text-muted-foreground">
-              請跟老師確認連結是否正確，或重新掃 QR Code
-            </p>
+            <p className="text-muted-foreground">請跟老師確認連結是否正確，或重新掃 QR Code</p>
             <p className="text-xs text-slate-400 font-mono break-all">ID: {questionId}</p>
           </motion.div>
         </div>
       );
     }
-    // 沒帶 ID（直連根目錄）或還在載入中
     return (
       <div className="page-container text-center">
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5 }}
-        >
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
           <h1 className="text-2xl font-bold gradient-text">目前沒有活動的問題</h1>
-          <p className="text-muted-foreground mt-2">
-            請等待老師建立新的問題
-          </p>
+          <p className="text-muted-foreground mt-2">請等待老師建立新的問題</p>
         </motion.div>
       </div>
     );
@@ -276,15 +246,9 @@ export default function Student() {
   if (isExpired && !hasVoted) {
     return (
       <div className="page-container text-center">
-        <motion.div
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5 }}
-        >
+        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
           <h1 className="text-2xl font-bold gradient-text">此題投票已結束</h1>
-          <p className="text-muted-foreground mt-2">
-            建立後 4 小時自動結束，請聯絡老師確認最新題目
-          </p>
+          <p className="text-muted-foreground mt-2">建立後 4 小時自動結束，請聯絡老師確認最新題目</p>
         </motion.div>
       </div>
     );
@@ -293,11 +257,7 @@ export default function Student() {
   if (isTimeUp && !hasVoted) {
     return (
       <div className="page-container text-center">
-        <motion.div
-          initial={{ opacity: 0, scale: 0.9 }}
-          animate={{ opacity: 1, scale: 1 }}
-          className="space-y-3"
-        >
+        <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }} className="space-y-3">
           <div className="text-7xl">⏰</div>
           <h1 className="text-2xl font-bold text-amber-600">倒數結束</h1>
           <p className="text-muted-foreground">本題投票時間已到</p>
@@ -306,7 +266,6 @@ export default function Student() {
     );
   }
 
-  // 需具名但還沒填 → 顯示身份表單
   if (requireIdentity && !hasIdentity) {
     const submitIdentity = (e: React.FormEvent) => {
       e.preventDefault();
@@ -349,8 +308,6 @@ export default function Student() {
   }
 
   const maxVotes = Math.max(...Object.values(totals), 0);
-
-  // Playful Campus 選項色塊（與 teacher / voting-stats 同步）
   const OPT_PALETTES = [
     { bg: "#FEE2E2", dot: "#EF4444" },
     { bg: "#DBEAFE", dot: "#3B82F6" },
@@ -362,7 +319,38 @@ export default function Student() {
 
   return (
     <div className="playful-shell min-h-screen p-2 sm:p-4">
-      {/* 投票成功 overlay：confetti 同時，畫面中央彈出綠色勾勾大圖 */}
+      {/* 點擊圖片彈出的全螢幕燈箱檢視器 */}
+      <AnimatePresence>
+        {isZoomed && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[9999] bg-black/90 flex flex-col items-center justify-center p-2 sm:p-4"
+            onClick={() => setIsZoomed(false)}
+          >
+            <button
+              onClick={() => setIsZoomed(false)}
+              className="absolute top-4 right-4 bg-white/20 hover:bg-white/40 text-white p-3 rounded-full transition-colors"
+              title="關閉放大圖"
+            >
+              <X className="w-6 h-6" />
+            </button>
+            <div className="text-white text-sm mb-2 opacity-80">點擊任意處或按右上角關閉</div>
+            <motion.img
+              src={question.imageUrl}
+              alt="歌手海報放大"
+              initial={{ scale: 0.8 }}
+              animate={{ scale: 1 }}
+              exit={{ scale: 0.8 }}
+              className="max-w-full max-h-[85vh] object-contain rounded-xl shadow-2xl border-2 border-white/20"
+              onClick={(e) => e.stopPropagation()}
+            />
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* 投票成功 overlay */}
       <AnimatePresence>
         {showSuccessOverlay && (
           <motion.div
@@ -379,11 +367,7 @@ export default function Student() {
               transition={{ type: "spring", stiffness: 260, damping: 15 }}
               className="bg-white/95 backdrop-blur-sm rounded-3xl shadow-2xl px-8 py-6 flex flex-col items-center gap-3 border-4 border-green-400"
             >
-              <motion.div
-                animate={{ rotate: [0, -10, 10, -5, 5, 0] }}
-                transition={{ duration: 0.6, delay: 0.1 }}
-                className="text-7xl"
-              >
+              <motion.div animate={{ rotate: [0, -10, 10, -5, 5, 0] }} transition={{ duration: 0.6, delay: 0.1 }} className="text-7xl">
                 🎉
               </motion.div>
               <div className="text-2xl font-black text-green-700">投票成功！</div>
@@ -406,8 +390,8 @@ export default function Student() {
           ⏱ <span className="tabular-nums text-lg">{secondsLeft}</span> 秒
         </motion.div>
       )}
+
       <div className="max-w-2xl mx-auto relative z-10">
-        {/* Playful 品牌列：logo + 班級提示 + LIVE chip */}
         <div className="flex items-center gap-2 mb-3 px-1">
           <img src={`${import.meta.env.BASE_URL}logo.png`} alt="" className="w-8 h-8 sm:w-9 sm:h-9 rounded-md" />
           <div className="flex-1 leading-tight">
@@ -420,32 +404,31 @@ export default function Student() {
         </div>
 
         <Card className="overflow-hidden shadow-xl border-0 bg-white/95 backdrop-blur-sm rounded-3xl">
-          <div className="relative">
+          {/* 點擊圖片可直接放大檢視 */}
+          <div className="relative group cursor-pointer" onClick={() => setIsZoomed(true)}>
             <motion.img
               src={question.imageUrl}
-              alt="問題圖片"
-              className="w-full h-auto max-h-[50vh] object-contain bg-slate-50"
+              alt="歌手海報"
+              className="w-full h-auto max-h-[60vh] object-contain bg-slate-900"
               initial={{ opacity: 0, scale: 0.95 }}
               animate={{ opacity: 1, scale: 1 }}
               transition={{ duration: 0.5 }}
             />
+            <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2 text-white font-bold text-base">
+              <ZoomIn className="w-6 h-6" /> 點擊放大查看歌手照片
+            </div>
+            <div className="absolute bottom-3 right-3 bg-black/60 backdrop-blur-md text-white text-xs px-3 py-1.5 rounded-full flex items-center gap-1.5 shadow-md">
+              <ZoomIn className="w-4 h-4" /> 點擊放大圖片
+            </div>
           </div>
 
           <div className="p-4 sm:p-6 space-y-4 sm:space-y-6">
             <AnimatePresence mode="wait">
               {hasVoted ? (
-                <motion.div
-                  className="space-y-4"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  transition={{ duration: 0.5 }}
-                >
+                <motion.div className="space-y-4" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.5 }}>
                   <div className="text-center mb-6">
                     <h2 className="text-xl sm:text-2xl font-bold gradient-text mb-2">投票結果</h2>
-                    <p className="text-sm text-muted-foreground">
-                      即時更新中...
-                    </p>
+                    <p className="text-sm text-muted-foreground">即時更新中...</p>
                   </div>
                   {question.options.map((option: string, index: number) => {
                     const count = totals[index] || 0;
@@ -462,82 +445,48 @@ export default function Student() {
                       >
                         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 mb-3">
                           <div className="flex items-center gap-3 min-w-0 flex-1">
-                            <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${isWinning ? "bg-primary text-primary-foreground" : "bg-gray-100 text-gray-600"
-                              }`}>
+                            <div className={`w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 ${isWinning ? "bg-primary text-primary-foreground" : "bg-gray-100 text-gray-600"}`}>
                               <span className="text-sm font-bold">{index + 1}</span>
                             </div>
-                            <span className={`text-sm sm:text-base font-medium break-words leading-tight ${isWinning ? "text-primary font-bold" : "text-gray-800"
-                              }`}>
+                            <span className={`text-sm sm:text-base font-medium break-words leading-tight ${isWinning ? "text-primary font-bold" : "text-gray-800"}`}>
                               {option}
                               {isWinning && (
-                                <motion.span
-                                  className="inline-block ml-2"
-                                  animate={{ rotate: [0, 10, -10, 0] }}
-                                  transition={{ duration: 0.5, repeat: Infinity }}
-                                >
+                                <motion.span className="inline-block ml-2" animate={{ rotate: [0, 10, -10, 0] }} transition={{ duration: 0.5, repeat: Infinity }}>
                                   🌟
                                 </motion.span>
                               )}
                             </span>
                             {question.showAnswer && question.correctAnswer === index && (
-                              <motion.div
-                                initial={{ scale: 0, opacity: 0 }}
-                                animate={{ scale: 1, opacity: 1 }}
-                                transition={{ type: "spring", stiffness: 300, delay: 0.2 }}
-                                className="flex-shrink-0"
-                              >
+                              <motion.div initial={{ scale: 0, opacity: 0 }} animate={{ scale: 1, opacity: 1 }} transition={{ type: "spring", stiffness: 300, delay: 0.2 }} className="flex-shrink-0">
                                 <Badge variant="default" className="bg-green-100 text-green-800 border-green-300 flex items-center gap-1 text-xs">
-                                  <CheckCircle2 className="w-3 h-3" />
-                                  正確答案
+                                  <CheckCircle2 className="w-3 h-3" /> 正確答案
                                 </Badge>
                               </motion.div>
                             )}
                           </div>
                           <div className="flex flex-col sm:flex-row sm:items-center gap-2">
-                            <motion.span
-                              className={`font-bold text-lg ${isWinning ? "text-primary" : "text-gray-700"}`}
-                              key={`count-${count}`}
-                              initial={{ scale: 0.5, opacity: 0 }}
-                              animate={{ scale: 1, opacity: 1 }}
-                              transition={{ type: "spring", stiffness: 200, damping: 10 }}
-                            >
+                            <motion.span className={`font-bold text-lg ${isWinning ? "text-primary" : "text-gray-700"}`}>
                               {animatedCounts[index] || 0} 票
                             </motion.span>
-                            <motion.span
-                              className="text-sm text-muted-foreground font-medium"
-                              initial={{ opacity: 0 }}
-                              animate={{ opacity: 1 }}
-                              transition={{ duration: 0.5, delay: 0.2 }}
-                            >
+                            <motion.span className="text-sm text-muted-foreground font-medium">
                               ({percentage.toFixed(1)}%)
                             </motion.span>
                           </div>
                         </div>
                         <div className="mt-3">
-                          <motion.div
-                            className="h-3 bg-gray-100 rounded-full overflow-hidden"
-                            initial={{ opacity: 0 }}
-                            animate={{ opacity: 1 }}
-                            transition={{ duration: 0.5 }}
-                          >
+                          <div className="h-3 bg-gray-100 rounded-full overflow-hidden">
                             <motion.div
-                              className={`h-full rounded-full ${isWinning ? "bg-gradient-to-r from-primary to-primary/80" : "bg-primary/70"
-                                }`}
+                              className={`h-full rounded-full ${isWinning ? "bg-gradient-to-r from-primary to-primary/80" : "bg-primary/70"}`}
                               initial={{ width: "0%" }}
                               animate={{ width: `${percentage}%` }}
                               transition={{ duration: 0.8, ease: "easeOut" }}
                             />
-                          </motion.div>
+                          </div>
                         </div>
                       </motion.div>
                     );
                   })}
-                  <motion.div
-                    className="mt-6 bg-gradient-to-r from-blue-50 to-purple-50 rounded-lg p-4 border border-blue-200"
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.5, delay: 0.5 }}
-                  >
+                  <motion.div className="mt-6 bg-gradient-to-r from-blue-50 to-purple-50 rounded-lg p-4 border border-blue-200" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5, delay: 0.5 }}>
                     <div className="flex items-center justify-center gap-3">
                       <div className="p-2 bg-blue-100 rounded-full">
                         <svg className="w-4 h-4 text-blue-600" fill="currentColor" viewBox="0 0 20 20">
@@ -552,29 +501,16 @@ export default function Student() {
                   </motion.div>
                 </motion.div>
               ) : (
-                <motion.div
-                  className="space-y-4"
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  transition={{ duration: 0.5 }}
-                >
-                  <div
-                    className="rounded-2xl p-4 mb-2"
-                    style={{ background: "linear-gradient(135deg,#EFF6FF,#FCE7F3)" }}
-                  >
+                <motion.div className="space-y-4" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.5 }}>
+                  <div className="rounded-2xl p-4 mb-2" style={{ background: "linear-gradient(135deg,#EFF6FF,#FCE7F3)" }}>
                     <div className="text-xs text-blue-700 font-extrabold mb-1">
                       👋 {committedName ? `嗨，${committedName}` : "請選一個答案"}
                     </div>
                     <h2 className="text-lg sm:text-xl font-extrabold text-slate-900 leading-snug">
-                      {isShortAnswer ? "請輸入你的答案" : isTrueFalse ? "你的判斷？" : isMultiple ? "可複選後再送出" : "請選擇你的答案"}
+                      {isShortAnswer ? "請輸入你的答案" : isTrueFalse ? "你的判斷？" : isMultiple ? "可複選後再送出" : "請選擇你最喜歡的歌手"}
                     </h2>
                     <p className="text-xs text-slate-500 mt-1">
-                      {isShortAnswer
-                        ? `最多 ${firestore.SHORTANSWER_MAX_LENGTH} 字（${textAnswer.length}/${firestore.SHORTANSWER_MAX_LENGTH}）`
-                        : isMultiple
-                          ? `已選 ${multiSelection.size} 項${multiSelection.size > 0 ? "，按下方送出" : ""}`
-                          : "點選選項即送出"}
+                      💡 提示：點擊上方歌手海報可以放大照片看得更清楚！
                     </p>
                   </div>
 
@@ -607,151 +543,123 @@ export default function Student() {
                       </Button>
                     </div>
                   ) : (
-                  <>
-                  <div className={isTrueFalse ? "grid grid-cols-2 gap-3 sm:gap-4" : "flex flex-col gap-2.5"}>
-                    {question.options.map((option: string, index: number) => {
-                      const palette = OPT_PALETTES[index % OPT_PALETTES.length];
-                      const isMultiSelected = isMultiple && multiSelection.has(index);
-                      const isPicked = isMultiple ? isMultiSelected : selectedOption === index;
-                      const isCorrectMulti = question.showAnswer && Array.isArray(question.correctAnswers) && question.correctAnswers.includes(index);
-                      const isAnswered = question.showAnswer && (question.correctAnswer === index || isCorrectMulti);
-                      const isWrongPick = question.showAnswer && isPicked && !isAnswered;
+                    <>
+                      <div className={isTrueFalse ? "grid grid-cols-2 gap-3 sm:gap-4" : "flex flex-col gap-2.5"}>
+                        {question.options.map((option: string, index: number) => {
+                          const palette = OPT_PALETTES[index % OPT_PALETTES.length];
+                          const isMultiSelected = isMultiple && multiSelection.has(index);
+                          const isPicked = isMultiple ? isMultiSelected : selectedOption === index;
+                          const isCorrectMulti = question.showAnswer && Array.isArray(question.correctAnswers) && question.correctAnswers.includes(index);
+                          const isAnswered = question.showAnswer && (question.correctAnswer === index || isCorrectMulti);
+                          const isWrongPick = question.showAnswer && isPicked && !isAnswered;
 
-                      // 是非題保留大圖示按鈕（⭕ / ❌）— 沿用現有色塊
-                      if (isTrueFalse) {
-                        return (
-                          <motion.button
-                            key={index}
-                            type="button"
-                            disabled={vote.isPending || hasVoted}
+                          if (isTrueFalse) {
+                            return (
+                              <motion.button
+                                key={index}
+                                type="button"
+                                disabled={vote.isPending || hasVoted}
+                                onClick={() => {
+                                  if (hasVoted || vote.isPending) return;
+                                  setSelectedOption(index);
+                                  setHasVoted(true);
+                                  if (questionId) {
+                                    localStorage.setItem(`voted_${questionId}`, index.toString());
+                                  }
+                                  vote.mutate(index);
+                                }}
+                                initial={{ x: -20, opacity: 0 }}
+                                animate={{ x: 0, opacity: 1 }}
+                                transition={{ delay: index * 0.1 }}
+                                whileHover={{ scale: 1.02 }}
+                                whileTap={{ scale: 0.97 }}
+                                className={`w-full aspect-square h-auto text-3xl sm:text-5xl font-black rounded-3xl transition-all duration-300 touch-manipulation grid place-items-center break-keep ${
+                                  isPicked
+                                    ? index === 0 ? "bg-emerald-500 text-white shadow-2xl" : "bg-red-500 text-white shadow-2xl"
+                                    : index === 0 ? "bg-white border-4 border-emerald-300 text-emerald-700 hover:bg-emerald-50" : "bg-white border-4 border-red-300 text-red-700 hover:bg-red-50"
+                                }`}
+                              >
+                                {option}
+                              </motion.button>
+                            );
+                          }
+
+                          return (
+                            <motion.button
+                              key={index}
+                              type="button"
+                              disabled={vote.isPending || hasVoted}
+                              onClick={() => {
+                                if (hasVoted || vote.isPending) return;
+                                if (isMultiple) {
+                                  toggleMulti(index);
+                                  return;
+                                }
+                                setSelectedOption(index);
+                                setHasVoted(true);
+                                if (questionId) {
+                                  localStorage.setItem(`voted_${questionId}`, index.toString());
+                                }
+                                vote.mutate(index);
+                              }}
+                              initial={{ x: -20, opacity: 0 }}
+                              animate={{ x: 0, opacity: 1 }}
+                              transition={{ delay: index * 0.08 }}
+                              whileHover={!hasVoted ? { scale: 1.01 } : undefined}
+                              whileTap={!hasVoted ? { scale: 0.99 } : undefined}
+                              className="w-full flex items-center gap-3 p-3.5 sm:p-4 rounded-2xl border-2 transition-all touch-manipulation text-left"
+                              style={{
+                                background: isAnswered ? "#D1FAE5" : isWrongPick ? "#FEE2E2" : isPicked ? palette.bg : "#fff",
+                                borderColor: isAnswered ? "#10B981" : isWrongPick ? "#EF4444" : isPicked ? palette.dot : "#E2E8F0",
+                                cursor: hasVoted ? "default" : "pointer",
+                              }}
+                            >
+                              <span className="playful-letter w-10 h-10 text-base flex-shrink-0 flex items-center justify-center font-bold rounded-xl text-white shadow-sm" style={{ background: palette.dot }} aria-hidden>
+                                {String.fromCharCode(65 + index)}
+                              </span>
+                              <span className="flex-1 text-base sm:text-lg font-extrabold text-slate-900 break-words leading-snug">
+                                {option}
+                              </span>
+                              {isAnswered ? (
+                                <span className="text-2xl flex-shrink-0">✓</span>
+                              ) : isWrongPick ? (
+                                <span className="text-2xl flex-shrink-0">✗</span>
+                              ) : isPicked && !isMultiple ? (
+                                <span className="text-xl flex-shrink-0">👆</span>
+                              ) : isMultiple ? (
+                                <span
+                                  className={`flex-shrink-0 w-6 h-6 rounded-md border-2 grid place-items-center transition-colors ${isMultiSelected ? "bg-white" : ""}`}
+                                  style={{ borderColor: isMultiSelected ? palette.dot : "#CBD5E1" }}
+                                >
+                                  {isMultiSelected && <CheckCircle2 className="w-5 h-5" style={{ color: palette.dot }} />}
+                                </span>
+                              ) : null}
+                            </motion.button>
+                          );
+                        })}
+                      </div>
+
+                      {isMultiple && !hasVoted && (
+                        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="mt-6">
+                          <Button
+                            size="lg"
+                            className="playful-cta w-full h-14 text-lg rounded-2xl"
+                            disabled={vote.isPending || multiSelection.size === 0}
                             onClick={() => {
-                              if (hasVoted || vote.isPending) return;
-                              setSelectedOption(index);
+                              if (vote.isPending || multiSelection.size === 0) return;
+                              const arr = Array.from(multiSelection).sort((a, b) => a - b);
                               setHasVoted(true);
                               if (questionId) {
-                                localStorage.setItem(`voted_${questionId}`, index.toString());
+                                localStorage.setItem(`voted_${questionId}`, arr.join(","));
                               }
-                              vote.mutate(index);
+                              vote.mutate(arr);
                             }}
-                            initial={{ x: -20, opacity: 0 }}
-                            animate={{ x: 0, opacity: 1 }}
-                            transition={{ delay: index * 0.1 }}
-                            whileHover={{ scale: 1.02 }}
-                            whileTap={{ scale: 0.97 }}
-                            className={`w-full aspect-square h-auto text-3xl sm:text-5xl font-black rounded-3xl transition-all duration-300 touch-manipulation grid place-items-center break-keep ${
-                              isPicked
-                                ? index === 0
-                                  ? "bg-emerald-500 text-white shadow-2xl"
-                                  : "bg-red-500 text-white shadow-2xl"
-                                : index === 0
-                                  ? "bg-white border-4 border-emerald-300 text-emerald-700 hover:bg-emerald-50"
-                                  : "bg-white border-4 border-red-300 text-red-700 hover:bg-red-50"
-                            }`}
                           >
-                            {option}
-                          </motion.button>
-                        );
-                      }
-
-                      return (
-                        <motion.button
-                          key={index}
-                          type="button"
-                          disabled={vote.isPending || hasVoted}
-                          onClick={() => {
-                            if (hasVoted || vote.isPending) return;
-                            if (isMultiple) {
-                              toggleMulti(index);
-                              return;
-                            }
-                            setSelectedOption(index);
-                            setHasVoted(true);
-                            if (questionId) {
-                              localStorage.setItem(`voted_${questionId}`, index.toString());
-                            }
-                            vote.mutate(index);
-                          }}
-                          initial={{ x: -20, opacity: 0 }}
-                          animate={{ x: 0, opacity: 1 }}
-                          transition={{ delay: index * 0.08 }}
-                          whileHover={!hasVoted ? { scale: 1.01 } : undefined}
-                          whileTap={!hasVoted ? { scale: 0.99 } : undefined}
-                          className="w-full flex items-center gap-3 p-3 sm:p-3.5 rounded-2xl border-2 transition-all touch-manipulation text-left"
-                          style={{
-                            background: isAnswered
-                              ? "#D1FAE5"
-                              : isWrongPick
-                                ? "#FEE2E2"
-                                : isPicked
-                                  ? palette.bg
-                                  : "#fff",
-                            borderColor: isAnswered
-                              ? "#10B981"
-                              : isWrongPick
-                                ? "#EF4444"
-                                : isPicked
-                                  ? palette.dot
-                                  : "#E2E8F0",
-                            cursor: hasVoted ? "default" : "pointer",
-                          }}
-                        >
-                          <span
-                            className="playful-letter w-9 h-9 text-sm flex-shrink-0"
-                            style={{ background: palette.dot }}
-                            aria-hidden
-                          >
-                            {String.fromCharCode(65 + index)}
-                          </span>
-                          <span className="flex-1 text-base sm:text-[0.95rem] font-extrabold text-slate-900 break-words leading-snug">
-                            {option}
-                          </span>
-                          {isAnswered ? (
-                            <span className="text-2xl flex-shrink-0">✓</span>
-                          ) : isWrongPick ? (
-                            <span className="text-2xl flex-shrink-0">✗</span>
-                          ) : isPicked && !isMultiple ? (
-                            <span className="text-xl flex-shrink-0">👆</span>
-                          ) : isMultiple ? (
-                            <span
-                              className={`flex-shrink-0 w-5 h-5 rounded-md border-2 grid place-items-center transition-colors ${
-                                isMultiSelected ? "bg-white" : ""
-                              }`}
-                              style={{ borderColor: isMultiSelected ? palette.dot : "#CBD5E1" }}
-                            >
-                              {isMultiSelected && <CheckCircle2 className="w-4 h-4" style={{ color: palette.dot }} />}
-                            </span>
-                          ) : null}
-                        </motion.button>
-                      );
-                    })}
-                  </div>
-
-                  {/* 多選送出按鈕 */}
-                  {isMultiple && !hasVoted && (
-                    <motion.div
-                      initial={{ opacity: 0, y: 10 }}
-                      animate={{ opacity: 1, y: 0 }}
-                      className="mt-6"
-                    >
-                      <Button
-                        size="lg"
-                        className="playful-cta w-full h-14 text-lg rounded-2xl"
-                        disabled={vote.isPending || multiSelection.size === 0}
-                        onClick={() => {
-                          if (vote.isPending || multiSelection.size === 0) return;
-                          const arr = Array.from(multiSelection).sort((a, b) => a - b);
-                          setHasVoted(true);
-                          if (questionId) {
-                            localStorage.setItem(`voted_${questionId}`, arr.join(","));
-                          }
-                          vote.mutate(arr);
-                        }}
-                      >
-                        {vote.isPending ? "送出中…" : `✅ 送出我的 ${multiSelection.size} 個選擇`}
-                      </Button>
-                    </motion.div>
-                  )}
-                  </>
+                            {vote.isPending ? "送出中…" : `✅ 送出我的 ${multiSelection.size} 個選擇`}
+                          </Button>
+                        </motion.div>
+                      )}
+                    </>
                   )}
                 </motion.div>
               )}
