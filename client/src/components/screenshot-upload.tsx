@@ -1,16 +1,15 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
-import { Camera, Scissors, Smartphone, Trash2, Check, Clipboard, Edit3, Palette } from "lucide-react";
+import { Camera, Scissors, Smartphone, Trash2, Check, Clipboard, Edit3 } from "lucide-react";
 import { CropIcon } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useConfetti } from "@/hooks/use-confetti";
 import ReactCrop, { type Crop as ReactCropType } from 'react-image-crop';
 import 'react-image-crop/dist/ReactCrop.css';
 import { Whiteboard } from "./whiteboard";
-import { ImageAnnotator } from "./image-annotator";
 
 interface ScreenshotUploadProps {
   onImageSelect: (image: string) => void;
@@ -26,8 +25,8 @@ export function ScreenshotUpload({ onImageSelect }: ScreenshotUploadProps) {
   const [isEditing, setIsEditing] = useState(false);
   const [crop, setCrop] = useState<ReactCropType>();
   const [isWhiteboardOpen, setIsWhiteboardOpen] = useState(false);
-  const [isAnnotatorOpen, setIsAnnotatorOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const imageRef = useRef<HTMLImageElement>(null);
   const cardRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
   const { triggerConfetti } = useConfetti();
@@ -83,13 +82,12 @@ export function ScreenshotUpload({ onImageSelect }: ScreenshotUploadProps) {
     return dataUrl;
   };
 
-  // 將多張照片排成單欄大圖串列（每張照片滿版寬度，上下排列，非常清晰）
   const combineMultipleImagesToLargeFeed = async (files: File[]): Promise<string> => {
     const selectedFiles = files.slice(0, 12);
     const images = await Promise.all(selectedFiles.map((f) => loadImageElement(f)));
     
-    const cellWidth = 800; // 寬度加大，確保手機上極為清晰
-    const cellHeight = 700; // 每張歌手卡片的高度
+    const cellWidth = 800;
+    const cellHeight = 700;
     const padding = 24;
     const labelHeight = 80;
 
@@ -100,7 +98,6 @@ export function ScreenshotUpload({ onImageSelect }: ScreenshotUploadProps) {
     const ctx = canvas.getContext("2d");
     if (!ctx) throw new Error("無法建立畫布");
 
-    // 深色背景
     ctx.fillStyle = "#0f172a";
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
@@ -108,7 +105,6 @@ export function ScreenshotUpload({ onImageSelect }: ScreenshotUploadProps) {
       const x = padding;
       const y = padding + index * (cellHeight + padding);
 
-      // 白色卡片底框
       ctx.fillStyle = "#ffffff";
       ctx.fillRect(x, y, cellWidth, cellHeight);
 
@@ -127,15 +123,13 @@ export function ScreenshotUpload({ onImageSelect }: ScreenshotUploadProps) {
 
       ctx.drawImage(img, sx, sy, sWidth, sHeight, x, y, cellWidth, photoAreaHeight);
 
-      const letter = String.fromCharCode(65 + index); // A, B, C...
+      const letter = String.fromCharCode(65 + index);
       const rawName = selectedFiles[index].name.replace(/\.[^/.]+$/, "");
       const badgeColor = BADGE_COLORS[index % BADGE_COLORS.length];
 
-      // 底部名稱列
       ctx.fillStyle = "#1e293b";
       ctx.fillRect(x, y + photoAreaHeight, cellWidth, labelHeight);
 
-      // 圓形代號徽章
       ctx.beginPath();
       ctx.arc(x + 45, y + photoAreaHeight + labelHeight / 2, 30, 0, Math.PI * 2);
       ctx.fillStyle = badgeColor;
@@ -150,7 +144,6 @@ export function ScreenshotUpload({ onImageSelect }: ScreenshotUploadProps) {
       ctx.textBaseline = "middle";
       ctx.fillText(letter, x + 45, y + photoAreaHeight + labelHeight / 2 + 2);
 
-      // 歌手名稱文字
       ctx.fillStyle = "#ffffff";
       ctx.font = "bold 28px sans-serif";
       ctx.textAlign = "left";
@@ -295,7 +288,6 @@ export function ScreenshotUpload({ onImageSelect }: ScreenshotUploadProps) {
       </Dialog>
 
       <Whiteboard isOpen={isWhiteboardOpen} onClose={() => setIsWhiteboardOpen(false)} onImageGenerated={(img) => { setPreview(img); onImageSelect(img); }} />
-      {preview && <ImageAnnotator imageUrl={preview} isOpen={isAnnotatorOpen} onClose={() => setIsAnnotatorOpen(false)} onImageUpdated={(img) => { setPreview(img); onImageSelect(img); }} />}
     </Card>
   );
 }
