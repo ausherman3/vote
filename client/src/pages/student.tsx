@@ -257,8 +257,8 @@ export default function Student() {
     }
     return (
       <div className="page-container text-center">
-        <h1 className="text-2xl font-bold gradient-text">目前沒有活動的問題</h1>
-        <p className="text-muted-foreground mt-2">請等待主持人建立新的投票</p>
+        <h1 className="text-2xl font-bold gradient-text">There are currently no active questions</h1>
+        <p className="text-muted-foreground mt-2">Please wait for the host to create a new poll.</p>
       </div>
     );
   }
@@ -347,8 +347,8 @@ export default function Student() {
         <div className="flex items-center gap-2 mb-3 px-1">
           <img src={`${import.meta.env.BASE_URL}logo.png`} alt="" className="w-8 h-8 rounded-md" />
           <div className="flex-1 leading-tight">
-            <div className="text-sm sm:text-base font-extrabold text-slate-900">即時投票系統</div>
-            <div className="text-xs text-slate-500">{committedName ? `${committedName}` : "歡迎你！"}</div>
+            <div className="text-sm sm:text-base font-extrabold text-slate-900">Real-time Voting System</div>
+            <div className="text-xs text-slate-500">{committedName ? `${committedName}` : " Welcome！"}</div>
           </div>
           <span className="inline-flex items-center gap-1 text-xs px-2 py-1 bg-red-100 text-red-600 rounded-full font-extrabold">
             <span className="w-1.5 h-1.5 rounded-full bg-red-600 animate-playful-pulse" />LIVE
