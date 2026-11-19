@@ -487,10 +487,10 @@ export default function Student() {
                 <div className="space-y-4">
                   <div className="rounded-2xl p-4" style={{ background: "linear-gradient(135deg,#EFF6FF,#FCE7F3)" }}>
                     <h2 className="text-lg sm:text-xl font-extrabold text-slate-900">
-                      {isShortAnswer ? "請輸入你的答案" : isMultiple ? "可複選後再送出" : "請選擇你最喜歡的歌手"}
+                      {isShortAnswer ? "請輸入你的答案" : isMultiple ? "可複選後再送出" : "Please choose your favourite performance"}
                     </h2>
                     <p className="text-xs text-slate-500 mt-1">
-                      {isMultiple ? `已選 ${multiSelection.size} 項` : "點選下方選項即完成投票"}
+                      {isMultiple ? `已選 ${multiSelection.size} 項` : "Cast your vote"}
                     </p>
                   </div>
 
