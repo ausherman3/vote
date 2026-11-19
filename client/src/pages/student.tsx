@@ -433,7 +433,7 @@ export default function Student() {
                       ))}
                     </div>
                     <span className="text-[11px] text-slate-300">
-                      👈 向左滑動看下一位歌手 👉
+                      👈 Swipe left to see the next 👉
                     </span>
                   </div>
                 </>
@@ -446,8 +446,8 @@ export default function Student() {
               {hasVoted ? (
                 <motion.div className="space-y-4" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
                   <div className="text-center mb-4">
-                    <h2 className="text-xl sm:text-2xl font-bold gradient-text mb-1">投票結果</h2>
-                    <p className="text-sm text-muted-foreground">總投票數：{totalVotes} 票</p>
+                    <h2 className="text-xl sm:text-2xl font-bold gradient-text mb-1">Voting Result</h2>
+                    <p className="text-sm text-muted-foreground">Total Votes：{totalVotes} Vote</p>
                   </div>
                   {question.options.map((option: string, index: number) => {
                     const count = totals[index] || 0;
@@ -465,12 +465,12 @@ export default function Student() {
                             </span>
                             {question.showAnswer && question.correctAnswer === index && (
                               <Badge className="bg-green-100 text-green-800">
-                                <CheckCircle2 className="w-3 h-3 mr-1" />正確答案
+                                <CheckCircle2 className="w-3 h-3 mr-1" />Winner
                               </Badge>
                             )}
                           </div>
                           <span className="font-bold text-base">
-                            {animatedCounts[index] || 0} 票 ({percentage.toFixed(1)}%)
+                            {animatedCounts[index] || 0} Vote ({percentage.toFixed(1)}%)
                           </span>
                         </div>
                         <div className="h-3 bg-gray-100 rounded-full overflow-hidden">
