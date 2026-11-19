@@ -189,7 +189,7 @@ export default function Student() {
       setShowSuccessOverlay(true);
       window.setTimeout(() => setShowSuccessOverlay(false), 1800);
 
-      toast({ title: "🎉 投票成功", description: "感謝您的參與！", variant: "success" });
+      toast({ title: "🎉 Voting Successfully", description: "Thank you for your participation！", variant: "success" });
       setHasVoted(true);
       let repIdx: number | null = null;
       let stored = "voted";
